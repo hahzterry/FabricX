@@ -42,3 +42,7 @@ next-env.d.ts
 data/orders.json
 .env.local
 cloudflared.exe
+# Local environment secrets
+/env
+.env
+.env.*
