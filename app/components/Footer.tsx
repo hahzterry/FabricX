@@ -51,10 +51,10 @@ export default function Footer() {
 
         <div className="col-span-1 sm:col-span-2 md:col-span-1">
           <h2 className="font-[family-name:var(--font-exo2)] text-3xl tracking-tight text-white mb-3">
-            VYRA
+            Zodiac Datn Shop
           </h2>
           <p className="text-sm text-gray-400 leading-relaxed max-w-[200px]">
-           Wear love. Wear memories. Printed on demand, shipped with intent.
+          Zodiac merch printed on demand, shipped with intent.
           </p>
         </div>
 
@@ -87,20 +87,9 @@ export default function Footer() {
           <p className="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-4">Follow</p>
           <ul className="space-y-3">
             <li>
-              <a href="https://instagram.com/vyra.official" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-white transition-colors">
-                Instagram
+              <a href="https://tiktok.com/@zodiacshirt" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-white transition-colors">
+                TikTok
               </a>
-            </li>
-            <li>
-              <a href="https://wa.me/your-number" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-white transition-colors">
-                WhatsApp
-              </a>
-            </li>
-            <li>
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-white transition-colors">
-                Twitter / X
-              </a>
-            </li>
           </ul>
 
           <div className="mt-6">
