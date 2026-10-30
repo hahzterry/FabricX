@@ -54,7 +54,7 @@ export default function Footer() {
             Zodiac Datn Shop
           </h2>
           <p className="text-sm text-gray-400 leading-relaxed max-w-[200px]">
-          Zodiac merch printed on demand, shipped with intent.
+            Zodiac merch printed on demand, shipped with intent.
           </p>
         </div>
 
@@ -90,6 +90,7 @@ export default function Footer() {
               <a href="https://tiktok.com/@zodiacshirt" target="_blank" rel="noopener noreferrer" className="text-sm text-gray-400 hover:text-white transition-colors">
                 TikTok
               </a>
+            </li>
           </ul>
 
           <div className="mt-6">
@@ -124,7 +125,7 @@ export default function Footer() {
       </div>
 
       <div className="border-t border-gray-800 px-6 py-4 max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-        <p className="text-xs text-gray-600">{`© ${year} VYRA. All rights reserved.`}</p>
+        <p className="text-xs text-gray-600">{`© ${year} Zodiac Datn Shop. All rights reserved.`}</p>
         <p className="text-xs text-gray-600">Printed on demand · Shipped worldwide</p>
       </div>
     </footer>
