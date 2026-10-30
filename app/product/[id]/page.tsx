@@ -216,7 +216,7 @@ export default function ProductPage(): React.ReactElement {
           <button onClick={() => router.back()} className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg">
             <ArrowLeftIcon className="h-5 w-5 text-gray-800" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">VYRA</h1>
+          <h1 className="text-xl font-bold text-gray-900">Zodiac Datn Shop</h1>
         </div>
         <div className="flex items-center gap-2">
           <span className="hidden md:inline text-xs text-gray-600">Prices in {currency}</span>
@@ -254,7 +254,7 @@ export default function ProductPage(): React.ReactElement {
             {mainImage ? (
               <img
                 src={mainImage}
-                alt={`${product.title} – VYRA`}
+                alt={`${product.title} – Zodiac Datn Shop`}
                 className="max-h-64 md:max-h-[450px] w-full object-contain rounded"
               />
             ) : (
