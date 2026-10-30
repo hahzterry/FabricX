@@ -59,7 +59,7 @@ const categories: Category[] = [
 ];
 
 const infoLinks = [
-  { label: "About VYRA", path: "/about", icon: "ℹ️" },
+  { label: "About Zodiac Datn Shop", path: "/about", icon: "ℹ️" },
   { label: "Blog", path: "/blog", icon: "✍️" },
   { label: "Contact Us", path: "/contact", icon: "📧" },
   { label: "Shipping Policy", path: "/shipping-policy", icon: "🚚" },
@@ -257,7 +257,7 @@ export default function HomeClient({ initialProducts }: Props) {
             >
               ☰
             </button>
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">VYRA</h1>
+            <h1 className="text-xl font-bold tracking-tight text-gray-900">Zodiac Datn Shop</h1>
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -286,7 +286,7 @@ export default function HomeClient({ initialProducts }: Props) {
             <span className="text-gray-400 mr-1 text-xs">🔍</span>
             <input
               type="text"
-              placeholder="Search streetwear..."
+              placeholder="Search Zodiac Merch..."
               className="flex-1 bg-transparent outline-none text-gray-900 placeholder:text-gray-400 text-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -387,7 +387,7 @@ export default function HomeClient({ initialProducts }: Props) {
               {selectedCategory === "Home" ? "Fresh Picks for You" : selectedCategory}
             </h2>
             <p className="mb-3 text-xs text-gray-600">
-              Discover VYRA streetwear: premium T-shirts, hoodies, sweatshirts and more, shipped worldwide.
+              Discover Zodiac Merch: premium T-shirts, hoodies, sweatshirts and more, shipped worldwide.
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {filteredProducts.map((p) => (
@@ -406,7 +406,7 @@ export default function HomeClient({ initialProducts }: Props) {
                   <div className="mb-1.5 rounded border border-gray-100 overflow-hidden w-full h-28 bg-white relative">
                     <Image
                       src={p.image}
-                      alt={`${p.name} by VYRA`}
+                      alt={`${p.name} by Zodiac Datn Shop`}
                       fill
                       className="object-contain"
                       sizes="(max-width: 768px) 50vw, 25vw"
