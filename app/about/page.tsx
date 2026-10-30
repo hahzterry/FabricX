@@ -14,7 +14,7 @@ export default function AboutPage(): React.ReactElement {
         >
           Back
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">VYRA</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Zodiac Datn Shop</h1>
         <div className="w-20" />
       </header>
 
@@ -23,12 +23,13 @@ export default function AboutPage(): React.ReactElement {
           Our Story
         </p>
         <h2 className="text-5xl font-bold text-gray-900 mb-6 leading-tight">
-          Wear What You Are
+          Wear Your Sign
         </h2>
         <p className="text-gray-500 text-lg leading-relaxed">
-          VYRA was built for people who don't follow trends — they set them.
-          We turn your favorite moments into wearable pieces, printed on demand, shipped
-          worldwide, and designed to last beyond the season.
+          Zodiac Datn Shop was built for people who want to wear their sign with pride.
+          We turn the twelve zodiac signs into wearable pieces — from tees and hoodies to
+          accessories — all printed on demand, shipped worldwide, and designed to last
+          beyond the season.
         </p>
       </section>
 
@@ -37,19 +38,19 @@ export default function AboutPage(): React.ReactElement {
       <section className="max-w-5xl mx-auto px-6 py-16 grid grid-cols-1 md:grid-cols-3 gap-10">
         {[
           {
-            icon: "🎨",
-            title: "Designed With Intent",
-            desc: "Every graphic, every cut, every colorway is deliberate. No filler, no fast fashion.",
+            icon: "♈",
+            title: "All Zodiac Signs",
+            desc: "Aries to Pisces — every sign gets its own collection. Find the merch that matches your energy.",
           },
           {
             icon: "📦",
             title: "Printed On Demand",
-            desc: "We only print what's ordered. No waste, no overstock — just your piece, made for you.",
+            desc: "We only print what's ordered. No waste, no overstock — just your zodiac piece, made for you.",
           },
           {
             icon: "🌍",
             title: "Ships Worldwide",
-            desc: "Wherever you are, VYRA ships to you. Global reach, local feel.",
+            desc: "Wherever you are, Zodiac Datn Shop ships to you. Global reach, cosmic feel.",
           },
         ].map((item) => (
           <div key={item.title} className="text-center space-y-3">
@@ -67,8 +68,8 @@ export default function AboutPage(): React.ReactElement {
           Mission
         </p>
         <p className="text-2xl font-semibold text-gray-800 leading-relaxed">
-          "To make quality streetwear accessible to everyone — no middlemen,
-          no markups, just great pieces shipped straight to your door."
+          "To make zodiac-inspired merch accessible to everyone — no middlemen,
+          no markups, just quality pieces printed on demand and shipped straight to your door."
         </p>
       </section>
 
@@ -84,16 +85,16 @@ export default function AboutPage(): React.ReactElement {
         <p className="text-gray-500 text-sm mb-6">
           Reach out anytime — we usually reply within 24 hours.
         </p>
-<button
-  onClick={() => window.location.href = "mailto:vyrastore07@gmail.com"}
-  className="inline-block bg-black text-white px-6 py-3 rounded-lg text-sm font-semibold transition-colors"
->
-  vyrastore07@gmail.com
-</button>
+        <button
+          onClick={() => window.location.href = "mailto:vyrastore07@gmail.com"}
+          className="inline-block bg-black text-white px-6 py-3 rounded-lg text-sm font-semibold transition-colors"
+        >
+          hahz5d@pm.me
+        </button>
       </section>
 
       <footer className="border-t border-gray-200 p-6 text-center text-xs text-gray-400">
-        2025 VYRA. All rights reserved.
+        2025 Zodiac Datn Shop. All rights reserved.
       </footer>
     </main>
   );
