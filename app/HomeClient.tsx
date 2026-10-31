@@ -13,8 +13,12 @@ import { useCart } from "./CartContext";
 import { useCurrency } from "./CurrencyContext";
 
 /* =========================================================
-   ZODIAC CONFIGURATION
+   CONFIGURATION
 ========================================================= */
+
+const PAGE_SIZE = 50;
+const DISPLAY_BATCH = 24;
+const MAX_API_PAGES = 100;
 
 const ZODIAC_SIGNS = [
   "Aries",
@@ -63,9 +67,6 @@ const ZODIAC_DATES: Record<ZodiacSign, string> = {
   Aquarius: "January 20 – February 18",
   Pisces: "February 19 – March 20",
 };
-
-const PAGE_SIZE = 50;
-const DISPLAY_BATCH = 24;
 
 /* =========================================================
    TYPES
@@ -129,7 +130,7 @@ type ApiResponse = {
 };
 
 /* =========================================================
-   ZODIAC MATCHING
+   HELPERS
 ========================================================= */
 
 function stripHtml(value: string): string {
@@ -147,50 +148,40 @@ function detectZodiacSigns(
   tags: string[] = [],
   description = ""
 ): ZodiacSign[] {
-  const titleText = title.toLowerCase();
-  const tagText = tags.join(" ").toLowerCase();
-  const descriptionText = stripHtml(description).toLowerCase();
-
   const searchable = [
-    titleText,
-    tagText,
-    descriptionText,
-  ].join(" ");
+    title,
+    tags.join(" "),
+    stripHtml(description),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const compact = searchable.replace(
+    /[^a-z0-9]/g,
+    ""
+  );
 
   return ZODIAC_SIGNS.filter((sign) => {
     const name = sign.toLowerCase();
 
-    const exactPattern = new RegExp(
+    const pattern = new RegExp(
       `\\b${name}\\b`,
       "i"
     );
 
-    const compact = searchable.replace(
-      /[^a-z0-9]/g,
-      ""
-    );
-
-    const combinedNames = [
-      `${name}zodiac`,
-      `zodiac${name}`,
-      `${name}sign`,
-      `${name}season`,
-      `${name}astrology`,
-      `${name}horoscope`,
-    ];
-
     return (
-      exactPattern.test(searchable) ||
-      combinedNames.some((value) =>
-        compact.includes(value)
-      )
+      pattern.test(searchable) ||
+      [
+        `${name}zodiac`,
+        `zodiac${name}`,
+        `${name}sign`,
+        `${name}season`,
+        `${name}astrology`,
+        `${name}horoscope`,
+      ].some((value) => compact.includes(value))
     );
   });
 }
-
-/* =========================================================
-   PRINTIFY DATA NORMALIZATION
-========================================================= */
 
 function normalizeProduct(
   product: PrintifyProduct
@@ -199,21 +190,20 @@ function normalizeProduct(
     ? product.variants
     : [];
 
-  const selectedVariant =
+  const variant =
     variants.find(
-      (variant) =>
-        variant.is_default === true &&
-        variant.is_enabled !== false &&
-        variant.is_available !== false
+      (item) =>
+        item.is_default === true &&
+        item.is_enabled !== false &&
+        item.is_available !== false
     ) ??
     variants.find(
-      (variant) =>
-        variant.is_enabled !== false &&
-        variant.is_available !== false
+      (item) =>
+        item.is_enabled !== false &&
+        item.is_available !== false
     ) ??
     variants.find(
-      (variant) =>
-        variant.is_enabled !== false
+      (item) => item.is_enabled !== false
     ) ??
     null;
 
@@ -221,8 +211,8 @@ function normalizeProduct(
     ? product.images
     : [];
 
-  const selectedImage =
-    images.find((image) => image.is_default)?.src ??
+  const image =
+    images.find((item) => item.is_default)?.src ??
     images[0]?.src ??
     "";
 
@@ -230,22 +220,25 @@ function normalizeProduct(
     ? product.tags.map(String)
     : [];
 
-  const title = String(product.title || "Zodiac Product");
-  const description = String(product.description || "");
+  const name = String(
+    product.title || "Zodiac Product"
+  );
+
+  const description = String(
+    product.description || ""
+  );
 
   return {
     id: String(product.id),
-    name: title,
-    price: selectedVariant
-      ? selectedVariant.price / 100
-      : 0,
-    variantId: selectedVariant?.id ?? null,
-    size: selectedVariant?.title ?? "Default",
-    image: selectedImage,
+    name,
+    price: variant ? variant.price / 100 : 0,
+    variantId: variant?.id ?? null,
+    size: variant?.title ?? "Default",
+    image,
     description,
     tags,
     signs: detectZodiacSigns(
-      title,
+      name,
       tags,
       description
     ),
@@ -285,12 +278,10 @@ function extractProducts(
     return response;
   }
 
-  // Matches the actual Printify JSON provided.
   if (Array.isArray(response.data)) {
     return response.data;
   }
 
-  // Also supports the custom API response format.
   if (Array.isArray(response.products)) {
     return response.products;
   }
@@ -300,45 +291,47 @@ function extractProducts(
 
 function getNextPage(
   response: ApiResponse | PrintifyProduct[],
-  page: number,
+  currentPage: number,
   receivedCount: number
 ): number | null {
-  if (Array.isArray(response)) {
-    return receivedCount >= PAGE_SIZE
-      ? page + 1
-      : null;
-  }
+  if (!Array.isArray(response)) {
+    if (response.has_more === false) {
+      return null;
+    }
 
-  if (response.has_more === false) {
-    return null;
-  }
+    if (typeof response.next_page === "number") {
+      return response.next_page > currentPage
+        ? response.next_page
+        : null;
+    }
 
-  if (typeof response.next_page === "number") {
-    return response.next_page > page
-      ? response.next_page
-      : null;
-  }
+    if (
+      typeof response.last_page === "number" &&
+      response.last_page > 0
+    ) {
+      return currentPage < response.last_page
+        ? currentPage + 1
+        : null;
+    }
 
-  if (
-    typeof response.last_page === "number" &&
-    response.last_page > 0
-  ) {
-    return page < response.last_page
-      ? page + 1
-      : null;
-  }
+    if (
+      typeof response.total === "number" &&
+      response.total >= 0
+    ) {
+      const perPage =
+        typeof response.per_page === "number" &&
+        response.per_page > 0
+          ? response.per_page
+          : PAGE_SIZE;
 
-  if (
-    typeof response.total === "number" &&
-    response.total > 0
-  ) {
-    return page * PAGE_SIZE < response.total
-      ? page + 1
-      : null;
+      return currentPage * perPage < response.total
+        ? currentPage + 1
+        : null;
+    }
   }
 
   return receivedCount >= PAGE_SIZE
-    ? page + 1
+    ? currentPage + 1
     : null;
 }
 
@@ -465,11 +458,7 @@ export default function HomeClient({
     useState(false);
 
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-
-  const [nextPage, setNextPage] =
-    useState<number | null>(1);
 
   const [visibleCount, setVisibleCount] =
     useState(DISPLAY_BATCH);
@@ -477,45 +466,34 @@ export default function HomeClient({
   const [totalProducts, setTotalProducts] =
     useState<number | null>(null);
 
+  const [inventoryComplete, setInventoryComplete] =
+    useState(false);
+
   const [cartMessage, setCartMessage] = useState("");
 
-  const loadingRef = useRef(false);
-  const loadedPagesRef = useRef<Set<number>>(
-    new Set()
-  );
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const requestIdRef = useRef(0);
 
   /* =======================================================
-     LOAD PRODUCTS
+     FETCH ALL PRINTIFY PRODUCTS
   ======================================================= */
 
-  const loadProducts = useCallback(
-    async (
-      page: number,
-      refresh = false
-    ): Promise<void> => {
-      if (loadingRef.current) {
-        return;
-      }
+  const loadAllProducts = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
 
-      if (
-        !refresh &&
-        loadedPagesRef.current.has(page)
-      ) {
-        return;
-      }
+    setLoading(true);
+    setError("");
+    setInventoryComplete(false);
 
-      loadingRef.current = true;
+    const allProducts = new Map<string, UiProduct>();
+    const seenPageSignatures = new Set<string>();
 
-      if (page === 1) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
+    let page = 1;
+    let reportedTotal: number | null = null;
+    let completed = false;
 
-      setError("");
-
-      try {
+    try {
+      while (page <= MAX_API_PAGES) {
         const response = await fetch(
           `/api/printify/products?page=${page}&limit=${PAGE_SIZE}`,
           {
@@ -526,7 +504,7 @@ export default function HomeClient({
 
         if (!response.ok) {
           throw new Error(
-            `Product API returned ${response.status}`
+            `Unable to load Printify page ${page}: ${response.status}`
           );
         }
 
@@ -535,109 +513,145 @@ export default function HomeClient({
           | PrintifyProduct[] =
           await response.json();
 
-        const rawProducts = extractProducts(result);
-
-        const normalizedProducts = rawProducts
-          .filter(
-            (product) =>
-              product != null &&
-              product.id != null &&
-              typeof product.title === "string"
-          )
-          .map(normalizeProduct);
-
-        if (refresh) {
-          loadedPagesRef.current.clear();
-          setVisibleCount(DISPLAY_BATCH);
+        if (
+          !Array.isArray(result) &&
+          typeof result.error === "string"
+        ) {
+          throw new Error(result.error);
         }
 
-        let uniqueCount = 0;
-
-        setProducts((previous) => {
-          const productMap = new Map<
-            string,
-            UiProduct
-          >();
-
-          if (!refresh) {
-            for (const product of previous) {
-              productMap.set(
-                product.id,
-                product
-              );
-            }
-          }
-
-          for (const product of normalizedProducts) {
-            if (!productMap.has(product.id)) {
-              uniqueCount++;
-            }
-
-            productMap.set(
-              product.id,
-              product
-            );
-          }
-
-          return Array.from(
-            productMap.values()
-          );
-        });
-
-        loadedPagesRef.current.add(page);
+        const rawProducts = extractProducts(result);
 
         if (
           !Array.isArray(result) &&
           typeof result.total === "number"
         ) {
-          setTotalProducts(result.total);
+          reportedTotal = result.total;
         }
 
-        const calculatedNextPage = getNextPage(
+        if (rawProducts.length === 0) {
+          completed = true;
+          break;
+        }
+
+        // Prevent infinite loops if the API ignores page.
+        const pageSignature = rawProducts
+          .map((product) => String(product.id))
+          .join("|");
+
+        if (seenPageSignatures.has(pageSignature)) {
+          throw new Error(
+            `The product API returned duplicate data for page ${page}. Check pagination in app/api/printify/products/route.ts.`
+          );
+        }
+
+        seenPageSignatures.add(pageSignature);
+
+        for (const product of rawProducts) {
+          if (
+            product == null ||
+            product.id == null ||
+            typeof product.title !== "string"
+          ) {
+            continue;
+          }
+
+          const normalized = normalizeProduct(product);
+
+          allProducts.set(
+            normalized.id,
+            normalized
+          );
+        }
+
+        // Update counts and products after each page.
+        // Do not wait for the entire inventory to finish.
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+
+        setProducts(
+          Array.from(allProducts.values())
+        );
+
+        setTotalProducts(reportedTotal);
+
+        const nextPage = getNextPage(
           result,
           page,
           rawProducts.length
         );
 
-        if (rawProducts.length === 0) {
-          setNextPage(null);
-        } else {
-          setNextPage(calculatedNextPage);
-        }
-
         console.info(
-          "[Zodiac Datn] Printify page loaded",
+          "[Zodiac Datn] Inventory page",
           {
             page,
             received: rawProducts.length,
-            mapped: normalizedProducts.length,
-            uniqueCount,
-            nextPage: calculatedNextPage,
+            uniqueProducts: allProducts.size,
+            reportedTotal,
+            nextPage,
           }
         );
-      } catch (err) {
-        console.error(
-          "[Zodiac Datn] Product loading failed",
-          err
-        );
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load products."
-        );
-      } finally {
-        loadingRef.current = false;
-        setLoading(false);
-        setLoadingMore(false);
+        if (nextPage === null) {
+          completed = true;
+          break;
+        }
+
+        if (nextPage <= page) {
+          throw new Error(
+            "The product API returned an invalid next page."
+          );
+        }
+
+        page = nextPage;
       }
-    },
-    []
-  );
+
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
+
+      if (!completed) {
+        throw new Error(
+          "The product API exceeded the maximum page limit."
+        );
+      }
+
+      setProducts(
+        Array.from(allProducts.values())
+      );
+
+      setTotalProducts(reportedTotal);
+      setInventoryComplete(true);
+    } catch (err) {
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
+
+      console.error(
+        "[Zodiac Datn] Inventory loading failed",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load products."
+      );
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    void loadProducts(1);
-  }, [loadProducts]);
+    void loadAllProducts();
+
+    return () => {
+      requestIdRef.current++;
+    };
+  }, [loadAllProducts]);
 
   /* =======================================================
      CATEGORY COUNTS
@@ -650,17 +664,20 @@ export default function HomeClient({
     >;
 
     for (const sign of ZODIAC_SIGNS) {
-      counts[sign] = products.filter(
-        (product) =>
-          product.signs.includes(sign)
-      ).length;
+      counts[sign] = 0;
+    }
+
+    for (const product of products) {
+      for (const sign of product.signs) {
+        counts[sign] += 1;
+      }
     }
 
     return counts;
   }, [products]);
 
   /* =======================================================
-     SEARCH AND FILTERS
+     FILTERING
   ======================================================= */
 
   const filteredProducts = useMemo(() => {
@@ -711,42 +728,29 @@ export default function HomeClient({
     visibleCount < filteredProducts.length;
 
   /* =======================================================
-     INFINITE SCROLL
+     INFINITE DISPLAY SCROLL
   ======================================================= */
 
   useEffect(() => {
     const element = sentinelRef.current;
 
-    if (!element) {
+    if (!element || !hasMoreVisible) {
       return;
     }
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (!entries[0]?.isIntersecting) {
-          return;
-        }
-
-        if (hasMoreVisible) {
+        if (entries[0]?.isIntersecting) {
           setVisibleCount((current) =>
             Math.min(
               current + DISPLAY_BATCH,
               filteredProducts.length
             )
           );
-
-          return;
-        }
-
-        if (
-          nextPage !== null &&
-          !loadingRef.current
-        ) {
-          void loadProducts(nextPage);
         }
       },
       {
-        rootMargin: "400px",
+        rootMargin: "500px",
       }
     );
 
@@ -756,12 +760,10 @@ export default function HomeClient({
   }, [
     hasMoreVisible,
     filteredProducts.length,
-    nextPage,
-    loadProducts,
   ]);
 
   /* =======================================================
-     USER ACTIONS
+     ACTIONS
   ======================================================= */
 
   function selectCategory(
@@ -810,7 +812,7 @@ export default function HomeClient({
   }
 
   /* =======================================================
-     SIDEBAR CONTENT
+     NAVIGATION
   ======================================================= */
 
   const categoryNavigation = (
@@ -847,7 +849,6 @@ export default function HomeClient({
             <span className="text-lg">
               {ZODIAC_SYMBOLS[sign]}
             </span>
-
             {sign}
           </span>
 
@@ -929,9 +930,7 @@ export default function HomeClient({
               className="px-1 text-xl"
               aria-label={`Wishlist: ${wishlist.length} items`}
             >
-              {wishlist.length > 0
-                ? "♥"
-                : "♡"}
+              {wishlist.length > 0 ? "♥" : "♡"}
             </button>
 
             <button
@@ -997,29 +996,6 @@ export default function HomeClient({
             <div className="mt-6">
               <NewsletterBox />
             </div>
-
-            <div className="mt-6 space-y-3 text-sm">
-              <a
-                href="/orders"
-                className="block"
-              >
-                My Orders
-              </a>
-
-              <a
-                href="/cart"
-                className="block"
-              >
-                Shopping Cart
-              </a>
-
-              <a
-                href="/wishlist"
-                className="block"
-              >
-                Wishlist
-              </a>
-            </div>
           </aside>
         </div>
       )}
@@ -1072,7 +1048,7 @@ export default function HomeClient({
           </section>
 
           <section className="px-3 py-6 sm:px-5">
-            {/* ZODIAC GRID */}
+            {/* ZODIAC CATEGORIES */}
             {selectedCategory === "Home" && (
               <div className="mb-8">
                 <h2 className="mb-4 text-xl font-black">
@@ -1116,25 +1092,37 @@ export default function HomeClient({
                 </h2>
 
                 <p className="mt-1 text-xs text-gray-500">
-                  {filteredProducts.length} matching products loaded
+                  {products.length} products loaded
                   {totalProducts !== null &&
-                    ` · ${totalProducts} total products`}
+                    ` · ${totalProducts} reported by Printify`}
                 </p>
+
+                {loading && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Loading complete inventory...
+                  </p>
+                )}
+
+                {inventoryComplete && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Inventory synchronized
+                  </p>
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={() =>
-                  void loadProducts(1, true)
+                  void loadAllProducts()
                 }
-                disabled={loading || loadingMore}
+                disabled={loading}
                 className="rounded-lg border border-black bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50"
               >
                 Refresh
               </button>
             </div>
 
-            {/* CART FEEDBACK */}
+            {/* CART MESSAGE */}
             {cartMessage && (
               <div
                 role="status"
@@ -1154,7 +1142,7 @@ export default function HomeClient({
               </div>
             )}
 
-            {/* ERRORS */}
+            {/* ERROR */}
             {error && (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 <p>{error}</p>
@@ -1162,9 +1150,7 @@ export default function HomeClient({
                 <button
                   type="button"
                   onClick={() =>
-                    void loadProducts(
-                      nextPage ?? 1
-                    )
+                    void loadAllProducts()
                   }
                   className="mt-2 font-bold underline"
                 >
@@ -1173,7 +1159,7 @@ export default function HomeClient({
               </div>
             )}
 
-            {/* LOADING */}
+            {/* LOADING SKELETON */}
             {loading && products.length === 0 && (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
                 {Array.from({
@@ -1204,18 +1190,15 @@ export default function HomeClient({
                     Try another zodiac sign or search term.
                   </p>
 
-                  {nextPage !== null && (
-                    <button
-                      type="button"
-                      disabled={loadingMore}
-                      onClick={() =>
-                        void loadProducts(nextPage)
-                      }
-                      className="mt-4 rounded-full bg-black px-5 py-3 text-xs font-bold text-white disabled:opacity-50"
-                    >
-                      Load More Products
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      selectCategory("Home")
+                    }
+                    className="mt-4 rounded-full bg-black px-5 py-3 text-xs font-bold text-white"
+                  >
+                    View All Products
+                  </button>
                 </div>
               )}
 
@@ -1226,7 +1209,6 @@ export default function HomeClient({
                   key={product.id}
                   className="group relative rounded-xl border border-gray-200 bg-white p-2 transition hover:border-black hover:shadow-md sm:p-3"
                 >
-                  {/* WISHLIST */}
                   <button
                     type="button"
                     onClick={() =>
@@ -1240,7 +1222,6 @@ export default function HomeClient({
                       : "♡"}
                   </button>
 
-                  {/* IMAGE */}
                   <button
                     type="button"
                     onClick={() =>
@@ -1264,7 +1245,6 @@ export default function HomeClient({
                     </div>
                   </button>
 
-                  {/* PRODUCT INFORMATION */}
                   <div className="pt-3">
                     {product.signs.length > 0 && (
                       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
@@ -1285,7 +1265,6 @@ export default function HomeClient({
                       {format(product.price)}
                     </p>
 
-                    {/* ACTIONS */}
                     <div className="mt-3 flex flex-col gap-2">
                       <button
                         type="button"
@@ -1312,38 +1291,31 @@ export default function HomeClient({
               ))}
             </div>
 
-            {/* PAGINATION */}
+            {/* INFINITE SCROLL */}
             <div
               ref={sentinelRef}
               className="flex min-h-20 items-center justify-center py-8"
             >
-              {loadingMore ? (
-                <p className="text-sm text-gray-500">
-                  Loading more products...
-                </p>
-              ) : hasMoreVisible ? (
+              {hasMoreVisible ? (
                 <button
                   type="button"
                   onClick={() =>
                     setVisibleCount(
                       (current) =>
-                        current + DISPLAY_BATCH
+                        Math.min(
+                          current + DISPLAY_BATCH,
+                          filteredProducts.length
+                        )
                     )
-                  }
-                  className="rounded-full border border-gray-300 bg-white px-6 py-3 text-sm font-semibold"
-                >
-                  Load More
-                </button>
-              ) : nextPage !== null ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void loadProducts(nextPage)
                   }
                   className="rounded-full border border-gray-300 bg-white px-6 py-3 text-sm font-semibold"
                 >
                   Load More Products
                 </button>
+              ) : loading ? (
+                <p className="text-sm text-gray-500">
+                  Loading more inventory...
+                </p>
               ) : filteredProducts.length > 0 ? (
                 <p className="text-xs text-gray-400">
                   You've reached the end of this collection.
@@ -1365,29 +1337,12 @@ export default function HomeClient({
         </p>
 
         <div className="mt-5 flex flex-wrap justify-center gap-4 text-xs text-gray-600">
-          <a href="/about">
-            About
-          </a>
-
-          <a href="/contact">
-            Contact
-          </a>
-
-          <a href="/shipping-policy">
-            Shipping
-          </a>
-
-          <a href="/refund-policy">
-            Refunds
-          </a>
-
-          <a href="/privacy-policy">
-            Privacy
-          </a>
-
-          <a href="/terms">
-            Terms
-          </a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+          <a href="/shipping-policy">Shipping</a>
+          <a href="/refund-policy">Refunds</a>
+          <a href="/privacy-policy">Privacy</a>
+          <a href="/terms">Terms</a>
         </div>
       </footer>
     </main>
