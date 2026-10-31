@@ -12,6 +12,10 @@ import { useRouter } from "next/navigation";
 import { useCart } from "./CartContext";
 import { useCurrency } from "./CurrencyContext";
 
+/* =========================================================
+   TYPES
+========================================================= */
+
 const ZODIAC_SIGNS = [
   "Aries",
   "Taurus",
@@ -30,6 +34,15 @@ const ZODIAC_SIGNS = [
 type ZodiacSign = (typeof ZODIAC_SIGNS)[number];
 type CategoryName = "Home" | ZodiacSign;
 
+type PrintifyVariant = {
+  id: number;
+  title?: string;
+  price: number;
+  is_default?: boolean;
+  is_enabled?: boolean;
+  is_available?: boolean;
+};
+
 type PrintifyProduct = {
   id: string | number;
   title: string;
@@ -39,14 +52,7 @@ type PrintifyProduct = {
     src: string;
     is_default?: boolean;
   }[];
-  variants?: {
-    id: number;
-    price: number;
-    title?: string;
-    is_default?: boolean;
-    is_enabled?: boolean;
-    is_available?: boolean;
-  }[];
+  variants?: PrintifyVariant[];
 };
 
 type UiProduct = {
@@ -61,14 +67,35 @@ type UiProduct = {
   signs: ZodiacSign[];
 };
 
-type Props = {
-  initialProducts?: PrintifyProduct[];
+type InitialProduct = Partial<UiProduct> & {
+  id: string;
+  name: string;
+  price: number;
 };
 
-const PAGE_SIZE = 50;
-const BATCH_SIZE = 24;
+type Props = {
+  initialProducts?: InitialProduct[];
+};
 
-const SYMBOLS: Record<ZodiacSign, string> = {
+type ApiResponse = {
+  products?: PrintifyProduct[];
+  data?: PrintifyProduct[];
+  current_page?: number;
+  last_page?: number | null;
+  total?: number | null;
+  has_more?: boolean;
+  next_page?: number | null;
+  error?: string;
+};
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const PAGE_SIZE = 50;
+const DISPLAY_BATCH = 24;
+
+const ZODIAC_SYMBOLS: Record<ZodiacSign, string> = {
   Aries: "♈",
   Taurus: "♉",
   Gemini: "♊",
@@ -83,7 +110,7 @@ const SYMBOLS: Record<ZodiacSign, string> = {
   Pisces: "♓",
 };
 
-const DATES: Record<ZodiacSign, string> = {
+const ZODIAC_DATES: Record<ZodiacSign, string> = {
   Aries: "Mar 21 – Apr 19",
   Taurus: "Apr 20 – May 20",
   Gemini: "May 21 – Jun 20",
@@ -98,141 +125,216 @@ const DATES: Record<ZodiacSign, string> = {
   Pisces: "Feb 19 – Mar 20",
 };
 
+/* =========================================================
+   ZODIAC DETECTION
+========================================================= */
+
 function detectZodiacSigns(
   title = "",
   tags: string[] = [],
   description = ""
 ): ZodiacSign[] {
-  const text = ` ${[title, ...tags, description]
+  const original = [title, ...tags, description]
     .join(" ")
     .replace(/<[^>]*>/g, " ")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()} `;
+    .replace(/&nbsp;/gi, " ")
+    .toLowerCase();
 
-  return ZODIAC_SIGNS.filter((sign) =>
-    text.includes(` ${sign.toLowerCase()} `)
+  const normalized = original.replace(
+    /[^a-z0-9]+/g,
+    " "
   );
+
+  const compact = normalized.replace(/\s+/g, "");
+
+  return ZODIAC_SIGNS.filter((sign) => {
+    const name = sign.toLowerCase();
+
+    const exactMatch = new RegExp(
+      `(^|\\s)${name}(\\s|$)`,
+      "i"
+    ).test(normalized);
+
+    const combinations = [
+      `${name}zodiac`,
+      `zodiac${name}`,
+      `${name}sign`,
+      `${name}season`,
+      `${name}themed`,
+      `${name}astrology`,
+      `${name}horoscope`,
+    ];
+
+    return (
+      exactMatch ||
+      combinations.some((term) =>
+        compact.includes(term)
+      )
+    );
+  });
 }
 
-function mapProduct(p: PrintifyProduct): UiProduct {
-  const variants = p.variants ?? [];
+/* =========================================================
+   PRODUCT NORMALIZATION
+========================================================= */
+
+function normalizeProduct(
+  product: PrintifyProduct
+): UiProduct {
+  const variants = product.variants ?? [];
 
   const variant =
     variants.find(
-      (v) =>
-        v.is_default &&
-        v.is_enabled !== false &&
-        v.is_available !== false
+      (item) =>
+        item.is_default === true &&
+        item.is_enabled !== false &&
+        item.is_available !== false
     ) ??
     variants.find(
-      (v) =>
-        v.is_enabled !== false &&
-        v.is_available !== false
+      (item) =>
+        item.is_enabled !== false &&
+        item.is_available !== false
     ) ??
-    variants.find((v) => v.is_enabled !== false) ??
+    variants.find(
+      (item) => item.is_enabled !== false
+    ) ??
     null;
 
   const image =
-    p.images?.find((i) => i.is_default)?.src ??
-    p.images?.[0]?.src ??
+    product.images?.find(
+      (item) => item.is_default
+    )?.src ??
+    product.images?.[0]?.src ??
     "";
 
-  const tags = Array.isArray(p.tags)
-    ? p.tags.map(String)
+  const tags = Array.isArray(product.tags)
+    ? product.tags.map(String)
     : [];
 
+  const description = product.description ?? "";
+
   return {
-    id: String(p.id),
-    name: p.title || "Zodiac Product",
+    id: String(product.id),
+    name: product.title || "Zodiac Product",
     price: variant ? variant.price / 100 : 0,
     variantId: variant?.id ?? null,
     size: variant?.title || "Default",
     image,
-    description: p.description ?? "",
+    description,
     tags,
     signs: detectZodiacSigns(
-      p.title,
+      product.title,
       tags,
-      p.description
+      description
     ),
   };
 }
 
-function extractProducts(data: unknown): PrintifyProduct[] {
-  if (Array.isArray(data)) {
-    return data as PrintifyProduct[];
+function normalizeInitialProduct(
+  product: InitialProduct
+): UiProduct {
+  const tags = product.tags ?? [];
+  const description = product.description ?? "";
+
+  return {
+    id: String(product.id),
+    name: product.name,
+    price: product.price,
+    variantId: product.variantId ?? null,
+    size: product.size ?? "Default",
+    image: product.image ?? "",
+    description,
+    tags,
+    signs: detectZodiacSigns(
+      product.name,
+      tags,
+      description
+    ),
+  };
+}
+
+function extractProducts(
+  response: ApiResponse | PrintifyProduct[]
+): PrintifyProduct[] {
+  if (Array.isArray(response)) {
+    return response;
   }
 
-  if (!data || typeof data !== "object") {
-    return [];
+  if (Array.isArray(response.products)) {
+    return response.products;
   }
 
-  const obj = data as Record<string, unknown>;
-
-  if (Array.isArray(obj.products)) {
-    return obj.products as PrintifyProduct[];
-  }
-
-  if (Array.isArray(obj.data)) {
-    return obj.data as PrintifyProduct[];
+  if (Array.isArray(response.data)) {
+    return response.data;
   }
 
   return [];
 }
 
-function nextPageFromResponse(
-  data: unknown,
-  page: number,
-  count: number
+function getNextPage(
+  response: ApiResponse | PrintifyProduct[],
+  currentPage: number,
+  receivedCount: number
 ): number | null {
-  if (!data || typeof data !== "object") {
-    return count >= PAGE_SIZE ? page + 1 : null;
-  }
-
-  const obj = data as Record<string, unknown>;
-
-  if (obj.has_more === false) return null;
-
-  if (typeof obj.next_page === "number") {
-    return obj.next_page > page
-      ? obj.next_page
+  if (Array.isArray(response)) {
+    return receivedCount >= PAGE_SIZE
+      ? currentPage + 1
       : null;
   }
 
-  if (typeof obj.last_page === "number") {
-    return page < obj.last_page
-      ? page + 1
+  if (response.has_more === false) {
+    return null;
+  }
+
+  if (typeof response.next_page === "number") {
+    return response.next_page > currentPage
+      ? response.next_page
       : null;
   }
 
-  if (typeof obj.total === "number") {
-    return page * PAGE_SIZE < obj.total
-      ? page + 1
+  if (
+    typeof response.last_page === "number" &&
+    response.last_page > 0
+  ) {
+    return currentPage < response.last_page
+      ? currentPage + 1
       : null;
   }
 
-  if (obj.has_more === true) return page + 1;
+  if (
+    typeof response.total === "number" &&
+    response.total > 0
+  ) {
+    return currentPage * PAGE_SIZE < response.total
+      ? currentPage + 1
+      : null;
+  }
 
-  return count >= PAGE_SIZE ? page + 1 : null;
+  return receivedCount >= PAGE_SIZE
+    ? currentPage + 1
+    : null;
 }
+
+/* =========================================================
+   NEWSLETTER
+========================================================= */
 
 function NewsletterBox() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   async function subscribe() {
     if (!email.trim()) {
-      setStatus("Enter your email address.");
+      setStatus("Please enter your email.");
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     setStatus("");
 
     try {
-      const res = await fetch("/api/newsletter", {
+      const response = await fetch("/api/newsletter", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -240,48 +342,67 @@ function NewsletterBox() {
         body: JSON.stringify({ email }),
       });
 
-      if (!res.ok) throw new Error();
+      const result = await response
+        .json()
+        .catch(() => null);
+
+      if (
+        !response.ok ||
+        result?.success === false
+      ) {
+        throw new Error();
+      }
 
       setEmail("");
-      setStatus("You're subscribed!");
+      setStatus("Subscribed successfully!");
     } catch {
       setStatus("Unable to subscribe right now.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   }
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <h3 className="text-sm font-bold">
-        Join the Zodiac List
+        Stay Updated
       </h3>
+
       <p className="mt-1 text-xs text-gray-500">
-        New arrivals and exclusive offers.
+        Zodiac drops and exclusive offers.
       </p>
+
       <input
         type="email"
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        onChange={(event) =>
+          setEmail(event.target.value)
+        }
         placeholder="Email address"
-        className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-black"
       />
+
       <button
         type="button"
-        disabled={loading}
+        disabled={submitting}
         onClick={subscribe}
         className="mt-2 w-full rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
       >
-        {loading ? "Submitting..." : "Subscribe"}
+        {submitting ? "Submitting..." : "Subscribe"}
       </button>
+
       {status && (
-        <p className="mt-2 text-xs text-gray-600">
+        <p className="mt-2 text-xs text-gray-500">
           {status}
         </p>
       )}
     </div>
   );
 }
+
+/* =========================================================
+   HOME CLIENT
+========================================================= */
 
 export default function HomeClient({
   initialProducts = [],
@@ -295,13 +416,21 @@ export default function HomeClient({
     wishlist,
   } = useCart();
 
-  const { currency, setCurrency, format } = useCurrency();
+  const {
+    currency,
+    setCurrency,
+    format,
+  } = useCurrency();
 
   const [products, setProducts] = useState<UiProduct[]>(
     () =>
       initialProducts
-        .filter((p) => p?.id != null && p?.title)
-        .map(mapProduct)
+        .filter(
+          (product) =>
+            product.id != null &&
+            Boolean(product.name)
+        )
+        .map(normalizeInitialProduct)
   );
 
   const [selectedCategory, setSelectedCategory] =
@@ -310,23 +439,41 @@ export default function HomeClient({
   const [searchTerm, setSearchTerm] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] =
     useState(false);
-  const [loading, setLoading] = useState(
-    initialProducts.length === 0
-  );
+
+  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [nextPage, setNextPage] = useState<number | null>(1);
+
+  const [nextPage, setNextPage] =
+    useState<number | null>(1);
+
   const [visibleCount, setVisibleCount] =
-    useState(BATCH_SIZE);
+    useState(DISPLAY_BATCH);
+
   const [cartMessage, setCartMessage] = useState("");
+  const [totalProducts, setTotalProducts] =
+    useState<number | null>(null);
 
+  const loadingRef = useRef(false);
+  const loadedPagesRef = useRef<Set<number>>(
+    new Set()
+  );
+  const loadedIdsRef = useRef<Set<string>>(
+    new Set()
+  );
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const fetchingRef = useRef(false);
-  const loadedPagesRef = useRef(new Set<number>());
 
-  const fetchProducts = useCallback(
-    async (page: number, refresh = false) => {
-      if (fetchingRef.current) return;
+  /* =======================================================
+     PRINTIFY PAGINATION
+  ======================================================= */
+
+  const loadProducts = useCallback(
+    async (
+      page: number,
+      refresh = false
+    ): Promise<void> => {
+      if (loadingRef.current) return;
+
       if (
         !refresh &&
         loadedPagesRef.current.has(page)
@@ -334,17 +481,22 @@ export default function HomeClient({
         return;
       }
 
-      fetchingRef.current = true;
+      loadingRef.current = true;
 
-      if (page === 1) setLoading(true);
-      else setLoadingMore(true);
+      if (page === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
 
       setError("");
 
       try {
         const response = await fetch(
           `/api/printify/products?page=${page}&limit=${PAGE_SIZE}`,
-          { cache: "no-store" }
+          {
+            cache: "no-store",
+          }
         );
 
         if (!response.ok) {
@@ -353,39 +505,93 @@ export default function HomeClient({
           );
         }
 
-        const data: unknown = await response.json();
-        const raw = extractProducts(data);
+        const result:
+          | ApiResponse
+          | PrintifyProduct[] =
+          await response.json();
 
-        const mapped = raw
-          .filter((p) => p?.id != null && p?.title)
-          .map(mapProduct);
+        const rawProducts = extractProducts(result);
 
-        setProducts((previous) => {
-          const merged = new Map<string, UiProduct>();
-
-          if (!refresh) {
-            previous.forEach((p) =>
-              merged.set(p.id, p)
-            );
-          }
-
-          mapped.forEach((p) =>
-            merged.set(p.id, p)
-          );
-
-          return Array.from(merged.values());
-        });
+        const mappedProducts = rawProducts
+          .filter(
+            (product) =>
+              product?.id != null &&
+              Boolean(product.title)
+          )
+          .map(normalizeProduct);
 
         if (refresh) {
           loadedPagesRef.current.clear();
-          setVisibleCount(BATCH_SIZE);
+          loadedIdsRef.current.clear();
+          setVisibleCount(DISPLAY_BATCH);
         }
+
+        let newProducts = 0;
+
+        for (const product of mappedProducts) {
+          if (
+            !loadedIdsRef.current.has(product.id)
+          ) {
+            loadedIdsRef.current.add(product.id);
+            newProducts++;
+          }
+        }
+
+        setProducts((previous) => {
+          const productMap = new Map<
+            string,
+            UiProduct
+          >();
+
+          if (!refresh) {
+            previous.forEach((product) => {
+              productMap.set(
+                product.id,
+                product
+              );
+            });
+          }
+
+          mappedProducts.forEach((product) => {
+            productMap.set(
+              product.id,
+              product
+            );
+          });
+
+          return Array.from(
+            productMap.values()
+          );
+        });
 
         loadedPagesRef.current.add(page);
 
-        setNextPage(
-          nextPageFromResponse(data, page, raw.length)
+        if (
+          !Array.isArray(result) &&
+          typeof result.total === "number"
+        ) {
+          setTotalProducts(result.total);
+        }
+
+        const calculatedNextPage = getNextPage(
+          result,
+          page,
+          rawProducts.length
         );
+
+        /*
+         * Stop pagination if the API returns
+         * an empty page or repeats the same
+         * products. This prevents infinite loops.
+         */
+        if (
+          rawProducts.length === 0 ||
+          (page > 1 && newProducts === 0)
+        ) {
+          setNextPage(null);
+        } else {
+          setNextPage(calculatedNextPage);
+        }
       } catch (err) {
         setError(
           err instanceof Error
@@ -393,7 +599,7 @@ export default function HomeClient({
             : "Unable to load products."
         );
       } finally {
-        fetchingRef.current = false;
+        loadingRef.current = false;
         setLoading(false);
         setLoadingMore(false);
       }
@@ -402,43 +608,74 @@ export default function HomeClient({
   );
 
   useEffect(() => {
-    void fetchProducts(1);
-  }, [fetchProducts]);
+    void loadProducts(1);
+  }, [loadProducts]);
+
+  /* =======================================================
+     CATEGORY COUNTS
+  ======================================================= */
 
   const categoryCounts = useMemo(() => {
-    const counts = {} as Record<ZodiacSign, number>;
+    const counts = {} as Record<
+      ZodiacSign,
+      number
+    >;
 
     ZODIAC_SIGNS.forEach((sign) => {
-      counts[sign] = products.filter((p) =>
-        p.signs.includes(sign)
+      counts[sign] = products.filter(
+        (product) =>
+          product.signs.includes(sign)
       ).length;
     });
 
     return counts;
   }, [products]);
 
+  /* =======================================================
+     FILTERING
+  ======================================================= */
+
   const filteredProducts = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const search = searchTerm
+      .trim()
+      .toLowerCase();
 
-    return products.filter((p) => {
-      const categoryMatch =
+    return products.filter((product) => {
+      const categoryMatches =
         selectedCategory === "Home" ||
-        p.signs.includes(selectedCategory);
+        product.signs.includes(
+          selectedCategory
+        );
 
-      const searchMatch =
-        !query ||
-        [p.name, p.description, ...p.tags]
+      const searchMatches =
+        !search ||
+        [
+          product.name,
+          product.description,
+          ...product.tags,
+          ...product.signs,
+        ]
           .join(" ")
           .toLowerCase()
-          .includes(query);
+          .includes(search);
 
-      return categoryMatch && searchMatch;
+      return (
+        categoryMatches &&
+        searchMatches
+      );
     });
-  }, [products, selectedCategory, searchTerm]);
+  }, [
+    products,
+    selectedCategory,
+    searchTerm,
+  ]);
 
   useEffect(() => {
-    setVisibleCount(BATCH_SIZE);
-  }, [selectedCategory, searchTerm]);
+    setVisibleCount(DISPLAY_BATCH);
+  }, [
+    selectedCategory,
+    searchTerm,
+  ]);
 
   const visibleProducts = filteredProducts.slice(
     0,
@@ -446,49 +683,89 @@ export default function HomeClient({
   );
 
   const hasMoreVisible =
-    visibleCount < filteredProducts.length;
+    visibleCount <
+    filteredProducts.length;
+
+  /* =======================================================
+     INFINITE SCROLL
+  ======================================================= */
 
   useEffect(() => {
     const element = sentinelRef.current;
+
     if (!element) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (!entries[0]?.isIntersecting) return;
+        if (
+          !entries[0]?.isIntersecting
+        ) {
+          return;
+        }
 
         if (hasMoreVisible) {
-          setVisibleCount((n) => n + BATCH_SIZE);
-        } else if (
+          setVisibleCount((current) =>
+            Math.min(
+              current + DISPLAY_BATCH,
+              filteredProducts.length
+            )
+          );
+
+          return;
+        }
+
+        if (
           nextPage !== null &&
-          !fetchingRef.current
+          !loadingRef.current
         ) {
-          void fetchProducts(nextPage);
+          void loadProducts(nextPage);
         }
       },
-      { rootMargin: "500px" }
+      {
+        rootMargin: "400px",
+      }
     );
 
     observer.observe(element);
+
     return () => observer.disconnect();
   }, [
     hasMoreVisible,
     nextPage,
-    fetchProducts,
     filteredProducts.length,
+    loadProducts,
   ]);
 
-  function selectCategory(category: CategoryName) {
+  /* =======================================================
+     ACTIONS
+  ======================================================= */
+
+  function selectCategory(
+    category: CategoryName
+  ) {
     setSelectedCategory(category);
     setMobileMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   }
 
-  function openProductPage(id: string) {
-    router.push(`/product/${encodeURIComponent(id)}`);
+  function openProductPage(
+    id: string
+  ) {
+    router.push(
+      `/product/${encodeURIComponent(id)}`
+    );
   }
 
-  function handleAddToCart(product: UiProduct) {
-    if (product.variantId === null) {
+  function handleAddToCart(
+    product: UiProduct
+  ) {
+    if (
+      product.variantId === null
+    ) {
       openProductPage(product.id);
       return;
     }
@@ -502,17 +779,27 @@ export default function HomeClient({
         size: product.size,
       });
 
-      setCartMessage(`${product.name} added to cart`);
+      setCartMessage(
+        `${product.name} added to cart`
+      );
     } catch {
-      setCartMessage("Unable to add product to cart.");
+      setCartMessage(
+        "Unable to add product to cart."
+      );
     }
   }
+
+  /* =======================================================
+     CATEGORY NAVIGATION
+  ======================================================= */
 
   const categoryNavigation = (
     <div className="space-y-1">
       <button
         type="button"
-        onClick={() => selectCategory("Home")}
+        onClick={() =>
+          selectCategory("Home")
+        }
         className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold ${
           selectedCategory === "Home"
             ? "bg-black text-white"
@@ -527,7 +814,9 @@ export default function HomeClient({
         <button
           key={sign}
           type="button"
-          onClick={() => selectCategory(sign)}
+          onClick={() =>
+            selectCategory(sign)
+          }
           className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${
             selectedCategory === sign
               ? "bg-black font-semibold text-white"
@@ -536,10 +825,11 @@ export default function HomeClient({
         >
           <span className="flex items-center gap-2">
             <span className="text-lg">
-              {SYMBOLS[sign]}
+              {ZODIAC_SYMBOLS[sign]}
             </span>
             {sign}
           </span>
+
           <span className="text-xs opacity-60">
             {categoryCounts[sign]}
           </span>
@@ -547,6 +837,10 @@ export default function HomeClient({
       ))}
     </div>
   );
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <main className="min-h-screen bg-gray-50 text-black">
@@ -556,8 +850,10 @@ export default function HomeClient({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="rounded-lg border px-3 py-2 text-sm lg:hidden"
+              onClick={() =>
+                setMobileMenuOpen(true)
+              }
+              className="rounded-lg border border-black px-3 py-2 text-sm lg:hidden"
               aria-label="Open menu"
             >
               ☰
@@ -565,7 +861,9 @@ export default function HomeClient({
 
             <button
               type="button"
-              onClick={() => selectCategory("Home")}
+              onClick={() =>
+                selectCategory("Home")
+              }
               className="text-left text-lg font-black tracking-tight sm:text-xl"
             >
               Zodiac Datn Shop
@@ -576,12 +874,12 @@ export default function HomeClient({
             <select
               aria-label="Currency"
               value={currency}
-              onChange={(e) =>
+              onChange={(event) =>
                 setCurrency(
-                  e.target.value as typeof currency
+                  event.target.value as typeof currency
                 )
               }
-              className="rounded-lg border bg-white px-2 py-2 text-xs"
+              className="rounded-lg border border-black bg-white px-2 py-2 text-xs"
             >
               {[
                 "USD",
@@ -593,7 +891,10 @@ export default function HomeClient({
                 "CAD",
                 "CHF",
               ].map((code) => (
-                <option key={code} value={code}>
+                <option
+                  key={code}
+                  value={code}
+                >
                   {code}
                 </option>
               ))}
@@ -601,29 +902,26 @@ export default function HomeClient({
 
             <button
               type="button"
-              onClick={() => router.push("/wishlist")}
+              onClick={() =>
+                router.push("/wishlist")
+              }
               className="px-1 text-xl"
-              aria-label={`Wishlist ${wishlist.length} items`}
+              aria-label={`Wishlist with ${wishlist.length} items`}
             >
-              {wishlist.length > 0 ? "♥" : "♡"}
+              {wishlist.length > 0
+                ? "♥"
+                : "♡"}
             </button>
 
             <button
               type="button"
-              onClick={() => router.push("/cart")}
+              onClick={() =>
+                router.push("/cart")
+              }
               className="px-1 text-xl"
               aria-label="Cart"
             >
               🛒
-            </button>
-
-            <button
-              type="button"
-              onClick={() => router.push("/orders")}
-              className="hidden px-1 text-xl sm:block"
-              aria-label="Orders"
-            >
-              📦
             </button>
           </div>
         </div>
@@ -632,8 +930,10 @@ export default function HomeClient({
           <input
             type="search"
             value={searchTerm}
-            onChange={(e) =>
-              setSearchTerm(e.target.value)
+            onChange={(event) =>
+              setSearchTerm(
+                event.target.value
+              )
             }
             placeholder="Search Zodiac Merch..."
             className="w-full rounded-full border border-gray-300 bg-gray-50 px-5 py-3 text-sm outline-none focus:border-black"
@@ -641,23 +941,30 @@ export default function HomeClient({
         </div>
       </header>
 
-      {/* MOBILE MENU */}
+      {/* MOBILE NAVIGATION */}
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 z-50 bg-black/50 lg:hidden"
-          onClick={() => setMobileMenuOpen(false)}
+          onClick={() =>
+            setMobileMenuOpen(false)
+          }
         >
           <aside
             className="h-full w-72 max-w-[85vw] overflow-y-auto bg-white p-4"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
           >
             <div className="mb-5 flex items-center justify-between">
               <h2 className="font-bold">
                 Shop Your Sign
               </h2>
+
               <button
                 type="button"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={() =>
+                  setMobileMenuOpen(false)
+                }
                 className="rounded-lg border px-3 py-2 text-sm"
               >
                 Close
@@ -668,6 +975,27 @@ export default function HomeClient({
 
             <div className="mt-6">
               <NewsletterBox />
+            </div>
+
+            <div className="mt-6 space-y-3 text-sm">
+              <a
+                href="/orders"
+                className="block"
+              >
+                My Orders
+              </a>
+              <a
+                href="/cart"
+                className="block"
+              >
+                Shopping Cart
+              </a>
+              <a
+                href="/wishlist"
+                className="block"
+              >
+                Wishlist
+              </a>
             </div>
           </aside>
         </div>
@@ -698,19 +1026,21 @@ export default function HomeClient({
             <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">
               {selectedCategory === "Home"
                 ? "Shop Your Zodiac Sign"
-                : `${SYMBOLS[selectedCategory]} ${selectedCategory}`}
+                : `${ZODIAC_SYMBOLS[selectedCategory]} ${selectedCategory}`}
             </h1>
 
             <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-gray-500">
               {selectedCategory === "Home"
                 ? "Discover zodiac inspired fashion made for your sign, your energy, and your style."
-                : `${DATES[selectedCategory]} · Discover clothing and accessories inspired by your zodiac sign.`}
+                : `${ZODIAC_DATES[selectedCategory]} · Discover clothing and accessories inspired by your zodiac sign.`}
             </p>
 
             {selectedCategory !== "Home" && (
               <button
                 type="button"
-                onClick={() => selectCategory("Home")}
+                onClick={() =>
+                  selectCategory("Home")
+                }
                 className="mt-5 rounded-full border border-black px-5 py-2 text-xs font-bold"
               >
                 View All Signs
@@ -731,15 +1061,19 @@ export default function HomeClient({
                     <button
                       key={sign}
                       type="button"
-                      onClick={() => selectCategory(sign)}
+                      onClick={() =>
+                        selectCategory(sign)
+                      }
                       className="rounded-xl border border-gray-200 bg-white px-2 py-4 text-center transition hover:border-black hover:shadow-sm"
                     >
                       <div className="text-3xl">
-                        {SYMBOLS[sign]}
+                        {ZODIAC_SYMBOLS[sign]}
                       </div>
+
                       <div className="mt-2 text-xs font-bold">
                         {sign}
                       </div>
+
                       <div className="mt-1 text-[10px] text-gray-400">
                         {categoryCounts[sign]} products
                       </div>
@@ -760,32 +1094,38 @@ export default function HomeClient({
 
                 <p className="mt-1 text-xs text-gray-500">
                   {filteredProducts.length} matching products loaded
-                  {nextPage !== null
-                    ? " · More products may be available"
-                    : ""}
+                  {totalProducts !== null &&
+                    ` · ${totalProducts} total in catalog`}
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => void fetchProducts(1, true)}
-                disabled={loading || loadingMore}
-                className="rounded-lg border bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                onClick={() =>
+                  void loadProducts(1, true)
+                }
+                disabled={
+                  loading || loadingMore
+                }
+                className="rounded-lg border border-black bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50"
               >
                 Refresh
               </button>
             </div>
 
-            {/* CART CONFIRMATION */}
+            {/* CART MESSAGE */}
             {cartMessage && (
               <div
                 role="status"
                 className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-3 text-xs"
               >
                 <span>{cartMessage}</span>
+
                 <button
                   type="button"
-                  onClick={() => router.push("/cart")}
+                  onClick={() =>
+                    router.push("/cart")
+                  }
                   className="shrink-0 font-bold underline"
                 >
                   View Cart
@@ -797,10 +1137,13 @@ export default function HomeClient({
             {error && (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 <p>{error}</p>
+
                 <button
                   type="button"
                   onClick={() =>
-                    void fetchProducts(nextPage ?? 1)
+                    void loadProducts(
+                      nextPage ?? 1
+                    )
                   }
                   className="mt-2 font-bold underline"
                 >
@@ -809,41 +1152,49 @@ export default function HomeClient({
               </div>
             )}
 
-            {/* LOADING */}
-            {loading && products.length === 0 && (
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="animate-pulse rounded-xl border bg-white p-3"
-                  >
-                    <div className="aspect-square rounded-lg bg-gray-200" />
-                    <div className="mt-3 h-4 rounded bg-gray-200" />
-                    <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
-                    <div className="mt-3 h-9 rounded bg-gray-200" />
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* LOADING SKELETONS */}
+            {loading &&
+              products.length === 0 && (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+                  {Array.from({
+                    length: 8,
+                  }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="animate-pulse rounded-xl border bg-white p-3"
+                    >
+                      <div className="aspect-square rounded-lg bg-gray-200" />
+                      <div className="mt-3 h-4 rounded bg-gray-200" />
+                      <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
+                      <div className="mt-3 h-9 rounded bg-gray-200" />
+                    </div>
+                  ))}
+                </div>
+              )}
 
-            {/* EMPTY RESULTS */}
+            {/* EMPTY CATEGORY */}
             {!loading &&
               filteredProducts.length === 0 && (
                 <div className="rounded-xl border bg-white px-5 py-12 text-center">
                   <h3 className="text-lg font-bold">
                     No matching products found
                   </h3>
+
                   <p className="mt-2 text-sm text-gray-500">
                     Try another zodiac sign or search term.
-                    Products without zodiac names in their
-                    metadata appear under All Products.
+                    Products need their zodiac sign in the
+                    Printify title, tags, or description to
+                    appear in a zodiac collection.
                   </p>
+
                   {nextPage !== null && (
                     <button
                       type="button"
                       disabled={loadingMore}
                       onClick={() =>
-                        void fetchProducts(nextPage)
+                        void loadProducts(
+                          nextPage
+                        )
                       }
                       className="mt-4 rounded-full bg-black px-5 py-3 text-xs font-bold text-white disabled:opacity-50"
                     >
@@ -855,91 +1206,114 @@ export default function HomeClient({
 
             {/* PRODUCT GRID */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-              {visibleProducts.map((product) => (
-                <article
-                  key={product.id}
-                  className="group relative rounded-xl border border-gray-200 bg-white p-2 transition hover:border-black hover:shadow-md sm:p-3"
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleWishlist(product.id)
-                    }
-                    className="absolute right-3 top-3 z-10 rounded-full bg-white p-2 text-lg shadow-sm"
-                    aria-label="Toggle wishlist"
+              {visibleProducts.map(
+                (product) => (
+                  <article
+                    key={product.id}
+                    className="group relative rounded-xl border border-gray-200 bg-white p-2 transition hover:border-black hover:shadow-md sm:p-3"
                   >
-                    {isInWishlist(product.id)
-                      ? "♥"
-                      : "♡"}
-                  </button>
+                    {/* WISHLIST */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleWishlist(
+                          product.id
+                        )
+                      }
+                      className="absolute right-3 top-3 z-10 rounded-full bg-white p-2 text-lg shadow-sm"
+                      aria-label="Toggle wishlist"
+                    >
+                      {isInWishlist(
+                        product.id
+                      )
+                        ? "♥"
+                        : "♡"}
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openProductPage(product.id)
-                    }
-                    className="block w-full"
-                  >
-                    <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50">
-                      {product.image ? (
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          loading="lazy"
-                          className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
-                        />
-                      ) : (
-                        <span className="text-xs text-gray-400">
-                          Image unavailable
-                        </span>
+                    {/* IMAGE */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openProductPage(
+                          product.id
+                        )
+                      }
+                      className="block w-full"
+                    >
+                      <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50">
+                        {product.image ? (
+                          <img
+                            src={
+                              product.image
+                            }
+                            alt={
+                              product.name
+                            }
+                            loading="lazy"
+                            className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">
+                            Image unavailable
+                          </span>
+                        )}
+                      </div>
+                    </button>
+
+                    {/* PRODUCT DETAILS */}
+                    <div className="pt-3">
+                      {product.signs.length >
+                        0 && (
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                          {product.signs
+                            .map(
+                              (sign) =>
+                                `${ZODIAC_SYMBOLS[sign]} ${sign}`
+                            )
+                            .join(" · ")}
+                        </p>
                       )}
-                    </div>
-                  </button>
 
-                  <div className="pt-3">
-                    {product.signs.length > 0 && (
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                        {product.signs
-                          .map(
-                            (sign) =>
-                              `${SYMBOLS[sign]} ${sign}`
-                          )
-                          .join(" · ")}
+                      <h3 className="min-h-[2.5rem] line-clamp-2 text-xs font-semibold leading-5 sm:text-sm">
+                        {product.name}
+                      </h3>
+
+                      <p className="mt-2 text-base font-black">
+                        {format(
+                          product.price
+                        )}
                       </p>
-                    )}
 
-                    <h3 className="min-h-[2.5rem] line-clamp-2 text-xs font-semibold leading-5 sm:text-sm">
-                      {product.name}
-                    </h3>
+                      {/* ACTIONS */}
+                      <div className="mt-3 flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleAddToCart(
+                              product
+                            )
+                          }
+                          className="w-full rounded-lg bg-black px-2 py-2.5 text-xs font-bold text-white transition hover:bg-gray-800"
+                        >
+                          Add to Cart
+                        </button>
 
-                    <p className="mt-2 text-base font-black">
-                      {format(product.price)}
-                    </p>
-
-                    <div className="mt-3 flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleAddToCart(product)
-                        }
-                        className="w-full rounded-lg bg-black px-2 py-2.5 text-xs font-bold text-white transition hover:bg-gray-800"
-                      >
-                        Add to Cart
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openProductPage(product.id)
-                        }
-                        className="w-full rounded-lg border border-black px-2 py-2.5 text-xs font-bold text-black transition hover:bg-gray-100"
-                      >
-                        Order Now
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openProductPage(
+                              product.id
+                            )
+                          }
+                          className="w-full rounded-lg border border-black px-2 py-2.5 text-xs font-bold text-black transition hover:bg-gray-100"
+                        >
+                          Order Now
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                )
+              )}
             </div>
 
             {/* INFINITE SCROLL */}
@@ -956,7 +1330,9 @@ export default function HomeClient({
                   type="button"
                   onClick={() =>
                     setVisibleCount(
-                      (count) => count + BATCH_SIZE
+                      (current) =>
+                        current +
+                        DISPLAY_BATCH
                     )
                   }
                   className="rounded-full border border-gray-300 bg-white px-6 py-3 text-sm font-semibold"
@@ -967,13 +1343,16 @@ export default function HomeClient({
                 <button
                   type="button"
                   onClick={() =>
-                    void fetchProducts(nextPage)
+                    void loadProducts(
+                      nextPage
+                    )
                   }
                   className="rounded-full border border-gray-300 bg-white px-6 py-3 text-sm font-semibold"
                 >
                   Load More Products
                 </button>
-              ) : filteredProducts.length > 0 ? (
+              ) : filteredProducts.length >
+                0 ? (
                 <p className="text-xs text-gray-400">
                   You've reached the end of this collection.
                 </p>
@@ -988,17 +1367,30 @@ export default function HomeClient({
         <h2 className="text-lg font-black">
           Zodiac Datn Shop
         </h2>
+
         <p className="mt-2 text-xs text-gray-500">
           Wear Your Sign. Express Your Energy.
         </p>
 
         <div className="mt-5 flex flex-wrap justify-center gap-4 text-xs text-gray-600">
-          <a href="/about">About</a>
-          <a href="/contact">Contact</a>
-          <a href="/shipping-policy">Shipping</a>
-          <a href="/refund-policy">Refunds</a>
-          <a href="/privacy-policy">Privacy</a>
-          <a href="/terms">Terms</a>
+          <a href="/about">
+            About
+          </a>
+          <a href="/contact">
+            Contact
+          </a>
+          <a href="/shipping-policy">
+            Shipping
+          </a>
+          <a href="/refund-policy">
+            Refunds
+          </a>
+          <a href="/privacy-policy">
+            Privacy
+          </a>
+          <a href="/terms">
+            Terms
+          </a>
         </div>
       </footer>
     </main>
