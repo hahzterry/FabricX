@@ -3,12 +3,12 @@ import { Metadata } from "next";
 import HomeClient from "./HomeClient";
 
 export const metadata: Metadata = {
-  title: "VYRA - Wear Love. Wear Memories.",
+  title: "Zodiac DatN Shop - Zodiac merch.",
   description:
-    "VYRA turns your favorite moments into wearable pieces. Custom graphic tees, hoodies and longsleeves. Printed on demand and shipped worldwide to USA, Australia, Canada, and beyond.",
+    "Zodiac DatN Shop printed on demand and shipped worldwide to USA, Australia, Canada, and beyond.",
   openGraph: {
-    title: "VYRA - Wear Love. Wear Memories.",
-    description: "Turn your favorite moments into wearable pieces. Worldwide shipping.",
+    title: "Zodiac Datn Shop - Zodiac everything.",
+    description: "Turn your favorite products into zodiac pieces. Worldwide shipping.",
     type: "website",
   },
 };
