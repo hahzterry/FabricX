@@ -5,10 +5,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const PRINTIFY_API_TOKEN = process.env.PRINTIFY_API_TOKEN;
-const PRINTIFY_SHOP_ID = process.env.PRINTIFY_SHOP_ID;
-
-const PRINTIFY_BASE_URL = (
+const TOKEN = process.env.PRINTIFY_API_TOKEN;
+const SHOP_ID = process.env.PRINTIFY_SHOP_ID;
+const BASE_URL = (
   process.env.PRINTIFY_BASE_URL ||
   "https://api.printify.com/v1"
 ).replace(/\/+$/, "");
@@ -20,16 +19,14 @@ type PrintifyProduct = {
   title: string;
   description?: string;
   tags?: string[];
-  visible?: boolean;
   images?: Array<{
     src: string;
-    position?: string;
     is_default?: boolean;
   }>;
   variants?: Array<{
     id: number;
     price: number;
-    is_enabled: boolean;
+    is_enabled?: boolean;
     is_available?: boolean;
   }>;
   [key: string]: unknown;
@@ -38,55 +35,48 @@ type PrintifyProduct = {
 type PrintifyResponse = {
   current_page?: number;
   last_page?: number;
-  total?: number;
   per_page?: number;
+  total?: number;
   data?: PrintifyProduct[];
   [key: string]: unknown;
 };
 
-function jsonResponse(
-  data: unknown,
-  status = 200
-) {
+function respond(data: unknown, status = 200) {
   return NextResponse.json(data, {
     status,
     headers: {
-      "Cache-Control":
-        "no-store, no-cache, must-revalidate",
+      "Cache-Control": "no-store",
     },
   });
 }
 
-async function fetchPrintifyPage(
+async function fetchPage(
   page: number
 ): Promise<PrintifyResponse> {
   const url = new URL(
-    `${PRINTIFY_BASE_URL}/shops/${PRINTIFY_SHOP_ID}/products.json`
+    `${BASE_URL}/shops/${SHOP_ID}/products.json`
   );
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(PAGE_LIMIT));
 
   const response = await fetch(url.toString(), {
-    method: "GET",
     headers: {
-      Authorization: `Bearer ${PRINTIFY_API_TOKEN}`,
+      Authorization: `Bearer ${TOKEN}`,
       Accept: "application/json",
     },
     cache: "no-store",
   });
 
   if (!response.ok) {
-    const message = await response.text();
-
-    console.error("Printify API error:", {
-      page,
-      status: response.status,
-      message,
-    });
+    console.error(
+      "Printify catalog error",
+      response.status,
+      await response.text()
+    );
 
     throw new Error(
-      `Printify request failed with status ${response.status}`
+      `Printify returned ${response.status}`
     );
   }
 
@@ -94,11 +84,9 @@ async function fetchPrintifyPage(
 }
 
 export async function GET(request: NextRequest) {
-  if (!PRINTIFY_API_TOKEN || !PRINTIFY_SHOP_ID) {
-    return jsonResponse(
-      {
-        error: "Printify API not configured",
-      },
+  if (!TOKEN || !SHOP_ID) {
+    return respond(
+      { error: "Printify API not configured" },
       500
     );
   }
@@ -106,35 +94,32 @@ export async function GET(request: NextRequest) {
   try {
     const params = request.nextUrl.searchParams;
 
-    const rawPage = Number(params.get("page") ?? "1");
+    const requestedPage = Number(
+      params.get("page") ?? "1"
+    );
 
     const page =
-      Number.isSafeInteger(rawPage) && rawPage >= 1
-        ? rawPage
+      Number.isSafeInteger(requestedPage) &&
+      requestedPage > 0
+        ? requestedPage
         : 1;
 
     const all = params.get("all") === "true";
 
-    // Optional complete catalog retrieval.
-    // Example: /api/printify/products?all=true
     if (all) {
-      const firstPage = await fetchPrintifyPage(1);
-
-      const firstProducts = Array.isArray(firstPage.data)
-        ? firstPage.data
-        : [];
+      const first = await fetchPage(1);
 
       const lastPage = Math.max(
         1,
-        Number(firstPage.last_page) || 1
+        Number(first.last_page) || 1
       );
 
-      const allProducts: PrintifyProduct[] = [
-        ...firstProducts,
-      ];
+      const products = new Map<string, PrintifyProduct>();
 
-      // Fetch the remaining pages in small batches.
-      // Avoid excessive simultaneous Printify requests.
+      for (const product of first.data ?? []) {
+        products.set(String(product.id), product);
+      }
+
       const BATCH_SIZE = 3;
 
       for (
@@ -142,7 +127,7 @@ export async function GET(request: NextRequest) {
         start <= lastPage;
         start += BATCH_SIZE
       ) {
-        const pages = Array.from(
+        const pageNumbers = Array.from(
           {
             length: Math.min(
               BATCH_SIZE,
@@ -153,42 +138,32 @@ export async function GET(request: NextRequest) {
         );
 
         const results = await Promise.all(
-          pages.map(fetchPrintifyPage)
+          pageNumbers.map(fetchPage)
         );
 
         for (const result of results) {
-          if (Array.isArray(result.data)) {
-            allProducts.push(...result.data);
+          for (const product of result.data ?? []) {
+            products.set(String(product.id), product);
           }
         }
       }
 
-      const uniqueProducts = Array.from(
-        new Map(
-          allProducts.map((product) => [
-            product.id,
-            product,
-          ])
-        ).values()
-      );
+      const data = Array.from(products.values());
 
-      return jsonResponse({
+      return respond({
+        data,
         current_page: 1,
         last_page: 1,
-        per_page: uniqueProducts.length,
-        total: uniqueProducts.length,
-        data: uniqueProducts,
+        per_page: data.length,
+        total: data.length,
         has_more: false,
         next_page: null,
         all: true,
       });
     }
 
-    // Standard paginated retrieval.
-    // Example: /api/printify/products?page=2
-    const result = await fetchPrintifyPage(page);
-
-    const products = Array.isArray(result.data)
+    const result = await fetchPage(page);
+    const data = Array.isArray(result.data)
       ? result.data
       : [];
 
@@ -202,24 +177,22 @@ export async function GET(request: NextRequest) {
 
     const hasMore = currentPage < lastPage;
 
-    return jsonResponse({
+    return respond({
       ...result,
-      data: products,
+      data,
       current_page: currentPage,
       last_page: lastPage,
       per_page: Number(result.per_page) || PAGE_LIMIT,
-      total: Number(result.total) || products.length,
+      total: result.total ?? data.length,
       has_more: hasMore,
       next_page: hasMore ? currentPage + 1 : null,
       all: false,
     });
   } catch (error) {
-    console.error("Printify products exception:", error);
+    console.error("Printify catalog failure:", error);
 
-    return jsonResponse(
-      {
-        error: "Unable to load Printify products",
-      },
+    return respond(
+      { error: "Unable to load Printify products" },
       502
     );
   }
