@@ -9,8 +9,8 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useCart } from "@/context/CartContext";
-import { useCurrency } from "@/context/CurrencyContext";
+import { useCart } from "./CartContext";
+import { useCurrency } from "./CurrencyContext";
 
 const ZODIAC_SIGNS = [
   "Aries",
