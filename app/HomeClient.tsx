@@ -105,6 +105,7 @@ type UiProduct = {
   description: string;
   tags: string[];
   signs: ZodiacSign[];
+  category: ZodiacSign | "Other";
 };
 
 type InitialProduct = Partial<UiProduct> & {
@@ -130,7 +131,7 @@ type ApiResponse = {
 };
 
 /* =========================================================
-   HELPERS
+   TEXT HELPERS
 ========================================================= */
 
 function stripHtml(value: string): string {
@@ -138,50 +139,119 @@ function stripHtml(value: string): string {
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
     .replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function detectZodiacSigns(
-  title = "",
-  tags: string[] = [],
-  description = ""
-): ZodiacSign[] {
-  const searchable = [
-    title,
-    tags.join(" "),
-    stripHtml(description),
-  ]
-    .join(" ")
-    .toLowerCase();
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  const compact = searchable.replace(
-    /[^a-z0-9]/g,
-    ""
-  );
+/* =========================================================
+   ZODIAC CLASSIFICATION
 
-  return ZODIAC_SIGNS.filter((sign) => {
+   IMPORTANT:
+   1. Product title has first priority.
+   2. Explicit product tags have second priority.
+   3. Descriptions are never used for classification.
+   4. Each product belongs to one zodiac category.
+   5. Products without a match belong to Other.
+========================================================= */
+
+function findSignInTitle(
+  title: string
+): ZodiacSign | null {
+  const normalized = normalizeText(title);
+
+  for (const sign of ZODIAC_SIGNS) {
     const name = sign.toLowerCase();
 
     const pattern = new RegExp(
-      `\\b${name}\\b`,
+      `(^|\\s)${name}(\\s|$)`,
       "i"
     );
 
-    return (
-      pattern.test(searchable) ||
-      [
-        `${name}zodiac`,
-        `zodiac${name}`,
-        `${name}sign`,
-        `${name}season`,
-        `${name}astrology`,
-        `${name}horoscope`,
-      ].some((value) => compact.includes(value))
-    );
-  });
+    if (pattern.test(normalized)) {
+      return sign;
+    }
+  }
+
+  return null;
 }
+
+function findSignInTags(
+  tags: string[]
+): ZodiacSign | null {
+  for (const tag of tags) {
+    const normalized = normalizeText(tag);
+
+    for (const sign of ZODIAC_SIGNS) {
+      const name = sign.toLowerCase();
+
+      const validTags = [
+        name,
+        `${name} zodiac`,
+        `zodiac ${name}`,
+        `${name} sign`,
+        `sign ${name}`,
+        `${name} astrology`,
+        `astrology ${name}`,
+        `${name} horoscope`,
+        `horoscope ${name}`,
+      ];
+
+      if (validTags.includes(normalized)) {
+        return sign;
+      }
+    }
+  }
+
+  return null;
+}
+
+function detectZodiacCategory(
+  title = "",
+  tags: string[] = []
+): ZodiacSign | "Other" {
+  const titleSign = findSignInTitle(title);
+
+  if (titleSign) {
+    return titleSign;
+  }
+
+  const tagSign = findSignInTags(tags);
+
+  if (tagSign) {
+    return tagSign;
+  }
+
+  return "Other";
+}
+
+function detectZodiacSigns(
+  title = "",
+  tags: string[] = []
+): ZodiacSign[] {
+  const category = detectZodiacCategory(
+    title,
+    tags
+  );
+
+  return category === "Other"
+    ? []
+    : [category];
+}
+
+/* =========================================================
+   NORMALIZE PRINTIFY PRODUCTS
+========================================================= */
 
 function normalizeProduct(
   product: PrintifyProduct
@@ -228,6 +298,11 @@ function normalizeProduct(
     product.description || ""
   );
 
+  const category = detectZodiacCategory(
+    name,
+    tags
+  );
+
   return {
     id: String(product.id),
     name,
@@ -237,11 +312,8 @@ function normalizeProduct(
     image,
     description,
     tags,
-    signs: detectZodiacSigns(
-      name,
-      tags,
-      description
-    ),
+    signs: detectZodiacSigns(name, tags),
+    category,
   };
 }
 
@@ -249,27 +321,33 @@ function normalizeInitialProduct(
   product: InitialProduct
 ): UiProduct {
   const tags = Array.isArray(product.tags)
-    ? product.tags
+    ? product.tags.map(String)
     : [];
 
-  const description = product.description ?? "";
+  const name = String(product.name);
+
+  const category = detectZodiacCategory(
+    name,
+    tags
+  );
 
   return {
     id: String(product.id),
-    name: product.name,
+    name,
     price: product.price,
     variantId: product.variantId ?? null,
     size: product.size ?? "Default",
     image: product.image ?? "",
-    description,
+    description: product.description ?? "",
     tags,
-    signs: detectZodiacSigns(
-      product.name,
-      tags,
-      description
-    ),
+    signs: detectZodiacSigns(name, tags),
+    category,
   };
 }
+
+/* =========================================================
+   PRINTIFY API HELPERS
+========================================================= */
 
 function extractProducts(
   response: ApiResponse | PrintifyProduct[]
@@ -651,7 +729,9 @@ export default function HomeClient({
   }, [loadAllProducts]);
 
   /* =======================================================
-     CATEGORY COUNTS INCLUDING OTHER
+     ACCURATE CATEGORY COUNTS
+
+     Every product contributes to exactly one category.
   ======================================================= */
 
   const categoryCounts = useMemo(() => {
@@ -667,20 +747,14 @@ export default function HomeClient({
     counts.Other = 0;
 
     for (const product of products) {
-      if (product.signs.length === 0) {
-        counts.Other += 1;
-      } else {
-        for (const sign of product.signs) {
-          counts[sign] += 1;
-        }
-      }
+      counts[product.category] += 1;
     }
 
     return counts;
   }, [products]);
 
   /* =======================================================
-     FILTERING INCLUDING OTHER
+     ACCURATE CATEGORY FILTERING
   ======================================================= */
 
   const filteredProducts = useMemo(() => {
@@ -689,34 +763,28 @@ export default function HomeClient({
       .toLowerCase();
 
     return products.filter((product) => {
-      let categoryMatches = false;
+      const categoryMatches =
+        selectedCategory === "Home" ||
+        product.category === selectedCategory;
 
-      if (selectedCategory === "Home") {
-        categoryMatches = true;
-      } else if (selectedCategory === "Other") {
-        categoryMatches = product.signs.length === 0;
-      } else {
-        categoryMatches = product.signs.includes(
-          selectedCategory
-        );
+      if (!categoryMatches) {
+        return false;
       }
 
-      const searchMatches =
-        !query ||
-        [
-          product.name,
-          stripHtml(product.description),
-          ...product.tags,
-          ...product.signs,
-          ...(product.signs.length === 0
-            ? ["Other"]
-            : []),
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(query);
+      if (!query) {
+        return true;
+      }
 
-      return categoryMatches && searchMatches;
+      const searchable = [
+        product.name,
+        stripHtml(product.description),
+        ...product.tags,
+        product.category,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(query);
     });
   }, [
     products,
@@ -783,6 +851,8 @@ export default function HomeClient({
   ) {
     setSelectedCategory(category);
     setMobileMenuOpen(false);
+    setVisibleCount(DISPLAY_BATCH);
+    setCartMessage("");
 
     window.scrollTo({
       top: 0,
@@ -824,7 +894,7 @@ export default function HomeClient({
   }
 
   /* =======================================================
-     NAVIGATION INCLUDING OTHER
+     NAVIGATION
   ======================================================= */
 
   const categoryNavigation = (
@@ -870,7 +940,6 @@ export default function HomeClient({
         </button>
       ))}
 
-      {/* OTHER CATEGORY */}
       <button
         type="button"
         onClick={() =>
@@ -1148,7 +1217,9 @@ export default function HomeClient({
                 </h2>
 
                 <p className="mt-1 text-xs text-gray-500">
-                  {products.length} products loaded
+                  {filteredProducts.length} matching products
+                  {" · "}
+                  {products.length} loaded
                   {totalProducts !== null &&
                     ` · ${totalProducts} reported by Printify`}
                 </p>
@@ -1248,9 +1319,10 @@ export default function HomeClient({
 
                   <button
                     type="button"
-                    onClick={() =>
-                      selectCategory("Home")
-                    }
+                    onClick={() => {
+                      setSearchTerm("");
+                      selectCategory("Home");
+                    }}
                     className="mt-4 rounded-full bg-black px-5 py-3 text-xs font-bold text-white"
                   >
                     View All Products
@@ -1302,20 +1374,11 @@ export default function HomeClient({
                   </button>
 
                   <div className="pt-3">
-                    {product.signs.length > 0 ? (
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                        {product.signs
-                          .map(
-                            (sign) =>
-                              `${ZODIAC_SYMBOLS[sign]} ${sign}`
-                          )
-                          .join(" · ")}
-                      </p>
-                    ) : (
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                        Other
-                      </p>
-                    )}
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                      {product.category === "Other"
+                        ? "Other"
+                        : `${ZODIAC_SYMBOLS[product.category]} ${product.category}`}
+                    </p>
 
                     <h3 className="min-h-[2.5rem] line-clamp-2 text-xs font-semibold leading-5 sm:text-sm">
                       {product.name}
