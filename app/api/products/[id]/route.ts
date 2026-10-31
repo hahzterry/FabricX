@@ -1,61 +1,52 @@
 
- // app/api/fabricx/products/route.ts
+
 import { NextResponse } from "next/server";
 
-const PRINTIFY_API_TOKEN = process.env.PRINTIFY_API_TOKEN;
-const PRINTIFY_SHOP_ID = process.env.PRINTIFY_SHOP_ID;
-const PRINTIFY_BASE_URL =
-  process.env.PRINTIFY_BASE_URL || "https://api.printify.com/v1";
-
-export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type PrintifyProduct = {
+const BASE =
+  process.env.PRINTIFY_BASE_URL ||
+  "https://api.printify.com/v1";
+
+const CACHE_SECONDS = 300;
+
+type Product = {
   id: string;
   title: string;
   visible?: boolean;
-  description?: string;
   tags?: string[];
-  options?: unknown[];
-  variants?: unknown[];
   images?: unknown[];
+  variants?: unknown[];
+  options?: unknown[];
 };
 
-type PrintifyListResponse = {
+type PageResponse = {
+  data: Product[];
   current_page: number;
   last_page: number;
-  total: number;
-  data: PrintifyProduct[];
 };
 
-const headers = {
-  Authorization: `Bearer ${PRINTIFY_API_TOKEN}`,
-  "Content-Type": "application/json",
-};
-
-async function fetchPrintifyPage(
+async function getPage(
+  shopId: string,
+  token: string,
   page: number
-): Promise<PrintifyListResponse> {
+): Promise<PageResponse> {
   const url =
-    `${PRINTIFY_BASE_URL}/shops/${PRINTIFY_SHOP_ID}` +
-    `/products.json?limit=50&page=${page}`;
+    `${BASE}/shops/${shopId}/products.json` +
+    `?limit=50&page=${page}`;
 
   const response = await fetch(url, {
-    headers,
-    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    next: {
+      revalidate: CACHE_SECONDS,
+    },
   });
 
   if (!response.ok) {
-    const error = await response.text();
-
-    console.error(
-      `Printify page ${page} error:`,
-      response.status,
-      error
-    );
-
     throw new Error(
-      `Failed to fetch Printify page ${page}: ${response.status}`
+      `Printify request failed: ${response.status}`
     );
   }
 
@@ -63,100 +54,67 @@ async function fetchPrintifyPage(
 }
 
 export async function GET() {
-  if (!PRINTIFY_API_TOKEN || !PRINTIFY_SHOP_ID) {
+  const token = process.env.PRINTIFY_API_TOKEN;
+  const shopId = process.env.PRINTIFY_SHOP_ID;
+
+  if (!token || !shopId) {
     return NextResponse.json(
-      { error: "Printify API not configured" },
+      { error: "Printify not configured" },
       { status: 500 }
     );
   }
 
   try {
-    // Get the first page.
-    const firstPage = await fetchPrintifyPage(1);
+    const first = await getPage(shopId, token, 1);
+    const products = [...(first.data || [])];
 
-    const allProducts: PrintifyProduct[] = [
-      ...(firstPage.data ?? []),
-    ];
+    const lastPage = Math.max(1, first.last_page || 1);
 
-    const totalPages = Math.max(
-      1,
-      firstPage.last_page || 1
-    );
-
-    // Retrieve every remaining page.
-    // Use small batches to avoid excessive concurrent requests.
-    const BATCH_SIZE = 5;
-
-    for (
-      let page = 2;
-      page <= totalPages;
-      page += BATCH_SIZE
-    ) {
-      const pageNumbers = Array.from(
+    // Fetch remaining pages in small batches.
+    for (let page = 2; page <= lastPage; page += 5) {
+      const pages = Array.from(
         {
-          length: Math.min(
-            BATCH_SIZE,
-            totalPages - page + 1
-          ),
+          length: Math.min(5, lastPage - page + 1),
         },
         (_, index) => page + index
       );
 
       const results = await Promise.all(
-        pageNumbers.map(fetchPrintifyPage)
+        pages.map((p) => getPage(shopId, token, p))
       );
 
       for (const result of results) {
-        if (Array.isArray(result.data)) {
-          allProducts.push(...result.data);
-        }
+        products.push(...(result.data || []));
       }
     }
 
-    // Remove duplicates and unpublished products.
-    const uniqueProducts = Array.from(
-      new Map(
-        allProducts.map((product) => [
-          product.id,
-          product,
-        ])
-      ).values()
+    const unique = Array.from(
+      new Map(products.map((p) => [p.id, p])).values()
     );
 
-    const publishedProducts = uniqueProducts.filter(
-      (product) => product.visible === true
-    );
-
-    // Printify list responses already include
-    // images, variants, tags and product options.
-    // No additional detail request is required
-    // for the existing ProductsContext.
-
-    console.log("FabricX Printify sync:", {
-      shopId: PRINTIFY_SHOP_ID,
-      totalPages,
-      totalProducts: uniqueProducts.length,
-      publishedProducts: publishedProducts.length,
-    });
-
-    // Preserve the response format expected by
-    // app/ProductsContext.tsx.
-    return NextResponse.json({
-      current_page: 1,
-      last_page: totalPages,
-      total: publishedProducts.length,
-      data: publishedProducts,
-    });
-  } catch (error) {
-    console.error(
-      "FabricX Printify products error:",
-      error
+    const published = unique.filter(
+      (p) => p.visible !== false
     );
 
     return NextResponse.json(
       {
-        error: "Unable to load Printify products",
+        current_page: 1,
+        last_page: lastPage,
+        total: published.length,
+        data: published,
       },
+      {
+        headers: {
+          "Cache-Control":
+            "public, s-maxage=300, stale-while-revalidate=600",
+        },
+      }
+    );
+  } catch (error) {
+    console.error("Printify catalog error:", error);
+
+    return NextResponse.json(
+      { error: "Unable to load products" },
       { status: 502 }
     );
   }
