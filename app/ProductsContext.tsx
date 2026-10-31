@@ -60,7 +60,9 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     async function load() {
       try {
         setLoading(true);
-        const res = await fetch("/api/fabricx/products");
+        const res = await fetch("/api/fabricx/products", {
+  signal: AbortSignal.timeout(3000),
+});
         if (!res.ok) {
           setProducts([]);
           return;
