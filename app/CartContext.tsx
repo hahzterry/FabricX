@@ -1,4 +1,3 @@
-// app/CartContext.tsx
 "use client";
 
 import {
@@ -47,72 +46,119 @@ const WISHLIST_STORAGE_KEY = "fabricx_wishlist_v1";
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     try {
-      if (typeof window === "undefined") return;
       const storedCart = window.localStorage.getItem(CART_STORAGE_KEY);
       const storedWishlist = window.localStorage.getItem(WISHLIST_STORAGE_KEY);
-      if (storedCart) setCart(JSON.parse(storedCart));
-      if (storedWishlist) setWishlist(JSON.parse(storedWishlist));
-    } catch (e) {
-      console.error("Failed to load cart/wishlist from storage", e);
+
+      if (storedCart) {
+        const parsed = JSON.parse(storedCart);
+        if (Array.isArray(parsed)) {
+          setCart(
+            parsed.map((item: any) => ({
+              ...item,
+              variant_id: Number(
+                item.variant_id ?? item.variantId ?? 0
+              ),
+            }))
+          );
+        }
+      }
+
+      if (storedWishlist) {
+        const parsed = JSON.parse(storedWishlist);
+        if (Array.isArray(parsed)) setWishlist(parsed);
+      }
+    } catch (error) {
+      console.error("Failed to load cart:", error);
+    } finally {
+      setHydrated(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
+
     try {
-      if (typeof window === "undefined") return;
-      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
-    } catch (e) {
-      console.error("Failed to save cart to storage", e);
+      window.localStorage.setItem(
+        CART_STORAGE_KEY,
+        JSON.stringify(cart)
+      );
+    } catch (error) {
+      console.error("Failed to save cart:", error);
     }
-  }, [cart]);
+  }, [cart, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
+
     try {
-      if (typeof window === "undefined") return;
-      window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(wishlist));
-    } catch (e) {
-      console.error("Failed to save wishlist to storage", e);
+      window.localStorage.setItem(
+        WISHLIST_STORAGE_KEY,
+        JSON.stringify(wishlist)
+      );
+    } catch (error) {
+      console.error("Failed to save wishlist:", error);
     }
-  }, [wishlist]);
+  }, [wishlist, hydrated]);
 
   const addItem: CartContextValue["addItem"] = (item) => {
     setCart((prev) => {
       const existingIndex = prev.findIndex(
         (ci) =>
           ci.id === item.id &&
-          ci.size === item.size &&
-          ci.color === item.color
+          ci.variant_id === item.variant_id
       );
+
       if (existingIndex !== -1) {
         const updated = [...prev];
+
         updated[existingIndex] = {
           ...updated[existingIndex],
-          quantity: updated[existingIndex].quantity + (item.quantity ?? 1),
+          quantity:
+            updated[existingIndex].quantity + (item.quantity ?? 1),
         };
+
         return updated;
       }
-      return [...prev, { ...item, quantity: item.quantity ?? 1 }];
+
+      return [
+        ...prev,
+        {
+          ...item,
+          quantity: item.quantity ?? 1,
+        },
+      ];
     });
   };
 
   const removeItem = (id: string) => {
-    setCart((prev) => prev.filter((item) => item.id !== id));
+    setCart((prev) =>
+      prev.filter(
+        (item) => `${item.id}:${item.variant_id}` !== id
+      )
+    );
   };
 
   const clearCart = () => setCart([]);
 
   const updateQuantity = (id: string, quantity: number) => {
     setCart((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, quantity } : item))
+      prev.map((item) =>
+        `${item.id}:${item.variant_id}` === id
+          ? { ...item, quantity: Math.max(1, quantity) }
+          : item
+      )
     );
   };
 
   const toggleWishlist = (id: string) => {
     setWishlist((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id]
     );
   };
 
