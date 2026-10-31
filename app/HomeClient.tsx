@@ -1333,7 +1333,7 @@ export default function HomeClient({
         </h2>
 
         <p className="mt-2 text-xs text-gray-500">
-          Wear Your Sign. Express Your Energy.
+          Rep Your Zodiac Sign. 
         </p>
 
         <div className="mt-5 flex flex-wrap justify-center gap-4 text-xs text-gray-600">
