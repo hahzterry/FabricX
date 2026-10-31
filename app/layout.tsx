@@ -5,27 +5,27 @@ import { CurrencyProvider } from "./CurrencyContext";
 import { CartProvider } from "./CartContext";
 import { ProductsProvider } from "./ProductsContext";
 
-const BASE_URL = "https://vyrastore.vercel.app";
+const BASE_URL = "https://shop.zodiacdatn.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
   title: {
-    default: "VYRA - Wear Love. Wear Memories.",
-    template: "%s | VYRA",
+    default: "Zodiac DatN Shop - Rep your zodiac sign",
+    template: "%s | Zodiac Datn Shop",
   },
   description:
-    "VYRA turns your favorite moments into wearable pieces. Custom graphic tees, hoodies, and more, printed on demand and shipped worldwide.",
+    "Zodiac Datn Show turns your into custom graphic tees, hoodies, and more, printed on demand and shipped worldwide.",
   keywords: [
     "streetwear",
     "print on demand",
     "graphic tees",
     "hoodies",
-    "VYRA",
-    "custom clothing",
+    "Zodiac Shirt",
+    "custom zodic clothing",
     "online fashion store",
-    "personalized clothing",
+    "personalized zodiac clothing",
     "wear love wear memories",
-    "independent streetwear brand",
+    "independent zodiac brand",
   ],
   authors: [{ name: "VYRA", url: BASE_URL }],
   creator: "VYRA",
@@ -44,26 +44,26 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: BASE_URL,
-    siteName: "VYRA",
-    title: "VYRA - Wear Love. Wear Memories.",
+    siteName: "Zodiac Datn Shop",
+    title: "Zodiac Datn Shop - Rep your zodiac sign on all your fav merch.",
     description:
-      "VYRA turns your favorite moments into wearable pieces. Printed on demand, shipped worldwide.",
+      Zodiac Datn Shop - Rep your zodiac sign on all your fav merch.
     images: [
       {
         url: `${BASE_URL}/og-image.jpg`,
         width: 1200,
         height: 630,
-        alt: "VYRA - Wear Love. Wear Memories.",
+        alt: "Zodiac DatN Shop - Rep your zodiac sign.
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "VYRA - Wear Love. Wear Memories.",
+    title: "Zodiac DatN Shop - Rep your zodiac sign.",
     description:
-      "VYRA turns your favorite moments into wearable pieces. Printed on demand, shipped worldwide.",
+      "Zodiac DatN Shop - Rep your zodiac sign. Printed on demand, shipped worldwide.",
     images: [`${BASE_URL}/og-image.jpg`],
-    creator: "@vyrastore",
+    creator: "@zodiacshirt",
   },
   alternates: {
     canonical: BASE_URL,
