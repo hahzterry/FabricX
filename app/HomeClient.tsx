@@ -45,7 +45,7 @@ type UiProduct = {
   name: string;
   price: number;
   category: CategoryName;
-  variantId: number | null;
+  variantId?: number | null;
   rating: number;
   reviews: number;
   image: string;
@@ -89,17 +89,19 @@ function deriveCategory(
   title: string,
   tags: string[] | undefined
 ): CategoryName {
-  const normalizedTitle = title.toLowerCase();
-  const normalizedTags = (tags ?? []).map((tag) =>
+  const lowerTitle = title.toLowerCase();
+  const lowerTags = (tags ?? []).map((tag) =>
     String(tag).toLowerCase()
   );
 
   const matches = (pattern: RegExp) =>
-    pattern.test(normalizedTitle) ||
-    normalizedTags.some((tag) => pattern.test(tag));
+    pattern.test(lowerTitle) ||
+    lowerTags.some((tag) => pattern.test(tag));
 
-  // Printify categories: specific product types first.
-  if (matches(/\b(tote|canvas bag|shopping bag|tote bag)\b/))
+  // Printify categories
+  // Check specific product types before general clothing.
+
+  if (matches(/\b(tote|canvas bag|shopping bag)\b/))
     return "Tote Bags";
 
   if (matches(/\b(candle|soy wax|scented soy)\b/))
@@ -108,7 +110,7 @@ function deriveCategory(
   if (matches(/\b(sticker|kiss.cut|die.cut|decal)\b/))
     return "Stickers";
 
-  if (matches(/\b(hoodie|hooded|pullover hoodie)\b/))
+  if (matches(/\b(hoodie|hooded)\b/))
     return "Hoodies";
 
   if (matches(/\b(sweatshirt|crewneck|sweater)\b/))
@@ -117,16 +119,16 @@ function deriveCategory(
   if (matches(/\b(tank top|tanktop|sleeveless)\b/))
     return "Tank Tops";
 
-  if (matches(/\b(long.sleeve)\b/))
+  if (matches(/\blong.sleeve\b/))
     return "Long Sleeve Shirts";
 
-  if (matches(/\b(polo)\b/))
+  if (matches(/\bpolo\b/))
     return "Polo Shirts";
 
-  if (matches(/\b(legging)\b/))
+  if (matches(/\blegging(s)?\b/))
     return "Leggings";
 
-  if (matches(/\b(shorts)\b/))
+  if (matches(/\bshorts\b/))
     return "Shorts";
 
   if (matches(/\b(dress|skirt)\b/))
@@ -168,7 +170,9 @@ function NewsletterBox() {
     try {
       const res = await fetch("/api/newsletter", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ email }),
       });
 
@@ -194,19 +198,24 @@ function NewsletterBox() {
       <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">
         Stay Updated
       </p>
+
       <div className="flex flex-col gap-1.5">
         <input
           type="email"
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
-            if (status !== "idle") setStatus("idle");
+            if (status !== "idle") {
+              setStatus("idle");
+            }
           }}
           placeholder="your@email.com"
           disabled={status === "loading"}
           className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none focus:border-black transition-colors disabled:opacity-50"
         />
+
         <button
+          type="button"
           onClick={handleSubscribe}
           disabled={status === "loading"}
           className="w-full bg-black text-white py-1.5 rounded text-xs font-semibold hover:bg-gray-900 transition-colors disabled:opacity-50"
@@ -214,6 +223,7 @@ function NewsletterBox() {
           {status === "loading" ? "..." : "Subscribe"}
         </button>
       </div>
+
       {message && (
         <p
           className={`text-xs mt-1.5 ${
@@ -229,35 +239,58 @@ function NewsletterBox() {
   );
 }
 
-export default function HomeClient({ initialProducts }: Props) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+export default function HomeClient({
+  initialProducts,
+}: Props) {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
   const [selectedCategory, setSelectedCategory] =
     useState<CategoryName>("Home");
+
   const [searchTerm, setSearchTerm] = useState("");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const [mobileMenuOpen, setMobileMenuOpen] =
+    useState(false);
 
   const router = useRouter();
-  const { addItem, toggleWishlist, isInWishlist, wishlist } =
-    useCart();
-  const { currency, setCurrency, format } = useCurrency();
-  const { products: rawProducts, loading } = useProducts();
 
+  const {
+    addItem,
+    toggleWishlist,
+    isInWishlist,
+    wishlist,
+  } = useCart();
+
+  const {
+    currency,
+    setCurrency,
+    format,
+  } = useCurrency();
+
+  const {
+    products: rawProducts,
+    loading,
+  } = useProducts();
+
+  // Convert Printify products into storefront products.
   const allProducts: UiProduct[] = useMemo(() => {
     if (rawProducts.length > 0) {
       return rawProducts.map((p) => {
         const mainImage =
-          p.images?.find((img: any) => img.is_default)?.src ??
+          p.images?.find(
+            (img: any) => img.is_default
+          )?.src ??
           p.images?.[0]?.src ??
           "https://via.placeholder.com/200";
 
         const firstVariant =
           p.variants?.find(
-            (v) =>
+            (v: any) =>
               v.is_default &&
               v.is_enabled !== false
           ) ??
           p.variants?.find(
-            (v) => v.is_enabled !== false
+            (v: any) => v.is_enabled !== false
           ) ??
           null;
 
@@ -268,7 +301,10 @@ export default function HomeClient({ initialProducts }: Props) {
             ? firstVariant.price / 100
             : 0,
           variantId: firstVariant?.id ?? null,
-          category: deriveCategory(p.title, p.tags),
+          category: deriveCategory(
+            p.title,
+            p.tags
+          ),
           rating: 4.5,
           reviews: 128,
           image: mainImage,
@@ -280,11 +316,14 @@ export default function HomeClient({ initialProducts }: Props) {
     return initialProducts ?? [];
   }, [rawProducts, initialProducts]);
 
+  // Filter products when sidebar category is selected.
   const filteredProducts = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
     return allProducts.filter((p) => {
       const matchesSearch = p.name
         .toLowerCase()
-        .includes(searchTerm.toLowerCase());
+        .includes(query);
 
       const matchesCategory =
         selectedCategory === "Home" ||
@@ -292,10 +331,21 @@ export default function HomeClient({ initialProducts }: Props) {
 
       return matchesSearch && matchesCategory;
     });
-  }, [allProducts, searchTerm, selectedCategory]);
+  }, [
+    allProducts,
+    searchTerm,
+    selectedCategory,
+  ]);
 
-  const openProductPage = (id: string) =>
+  // Shared handler for mobile and desktop sidebar.
+  const selectCategory = (name: CategoryName) => {
+    setSelectedCategory(name);
+    setMobileMenuOpen(false);
+  };
+
+  const openProductPage = (id: string) => {
     router.push(`/product/${id}`);
+  };
 
   const handleAddToCart = (p: UiProduct) => {
     if (p.variantId == null) {
@@ -312,6 +362,7 @@ export default function HomeClient({ initialProducts }: Props) {
     });
   };
 
+  // Loading skeleton
   if (loading && allProducts.length === 0) {
     return (
       <main className="min-h-screen bg-gray-50 text-black">
@@ -321,12 +372,14 @@ export default function HomeClient({ initialProducts }: Props) {
               <div className="w-7 h-7 bg-gray-200 rounded animate-pulse" />
               <div className="w-16 h-5 bg-gray-200 rounded animate-pulse" />
             </div>
+
             <div className="flex items-center gap-2">
               <div className="w-16 h-7 bg-gray-200 rounded animate-pulse" />
               <div className="w-7 h-7 bg-gray-200 rounded-full animate-pulse" />
               <div className="w-7 h-7 bg-gray-200 rounded-full animate-pulse" />
             </div>
           </div>
+
           <div className="px-3 pb-2">
             <div className="w-full h-8 bg-gray-200 rounded-full animate-pulse" />
           </div>
@@ -346,6 +399,7 @@ export default function HomeClient({ initialProducts }: Props) {
                 <div className="h-3 bg-gray-200 rounded w-3/4 mb-1" />
                 <div className="h-3 bg-gray-200 rounded w-1/2 mb-2" />
                 <div className="h-3 bg-gray-200 rounded w-1/4 mb-2" />
+
                 <div className="flex gap-1">
                   <div className="flex-1 h-7 bg-gray-200 rounded" />
                   <div className="flex-1 h-7 bg-gray-200 rounded" />
@@ -360,18 +414,24 @@ export default function HomeClient({ initialProducts }: Props) {
 
   return (
     <main className="min-h-screen bg-gray-50 text-black">
+
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 w-full">
         <div className="flex items-center justify-between px-3 py-2">
+
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() =>
-                setMobileMenuOpen(!mobileMenuOpen)
+                setMobileMenuOpen((open) => !open)
               }
               className="p-1 rounded bg-black text-white text-xs"
+              aria-label="Open categories menu"
+              aria-expanded={mobileMenuOpen}
             >
               ☰
             </button>
+
             <h1 className="text-xl font-bold tracking-tight text-gray-900">
               Zodiac Datn Shop
             </h1>
@@ -396,7 +456,10 @@ export default function HomeClient({ initialProducts }: Props) {
             </select>
 
             <button
-              onClick={() => router.push("/wishlist")}
+              type="button"
+              onClick={() =>
+                router.push("/wishlist")
+              }
               className="text-lg leading-none"
               aria-label="Wishlist"
             >
@@ -404,7 +467,10 @@ export default function HomeClient({ initialProducts }: Props) {
             </button>
 
             <button
-              onClick={() => router.push("/cart")}
+              type="button"
+              onClick={() =>
+                router.push("/cart")
+              }
               className="text-lg leading-none"
               aria-label="Cart"
             >
@@ -412,7 +478,10 @@ export default function HomeClient({ initialProducts }: Props) {
             </button>
 
             <button
-              onClick={() => router.push("/orders")}
+              type="button"
+              onClick={() =>
+                router.push("/orders")
+              }
               className="text-lg leading-none"
               aria-label="Orders"
             >
@@ -426,6 +495,7 @@ export default function HomeClient({ initialProducts }: Props) {
             <span className="text-gray-400 mr-1 text-xs">
               🔍
             </span>
+
             <input
               type="text"
               placeholder="Search Zodiac Merch..."
@@ -443,14 +513,21 @@ export default function HomeClient({ initialProducts }: Props) {
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 z-50 bg-black/40"
-          onClick={() => setMobileMenuOpen(false)}
+          onClick={() =>
+            setMobileMenuOpen(false)
+          }
         >
           <div
             className="bg-white w-56 h-full p-3 overflow-y-auto flex flex-col"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) =>
+              e.stopPropagation()
+            }
           >
             <button
-              onClick={() => setMobileMenuOpen(false)}
+              type="button"
+              onClick={() =>
+                setMobileMenuOpen(false)
+              }
               className="mb-3 bg-black text-white px-3 py-1 rounded text-xs w-fit"
             >
               ✕ Close
@@ -462,20 +539,26 @@ export default function HomeClient({ initialProducts }: Props) {
 
             <ul className="space-y-0.5">
               {categories.map((cat) => (
-                <li
-                  key={cat.name}
-                  onClick={() => {
-                    setSelectedCategory(cat.name);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded transition-all ${
-                    selectedCategory === cat.name
-                      ? "bg-black text-white"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  {cat.icon}
-                  <span>{cat.name}</span>
+                <li key={cat.name}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      selectCategory(cat.name)
+                    }
+                    aria-current={
+                      selectedCategory === cat.name
+                        ? "page"
+                        : undefined
+                    }
+                    className={`w-full cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded transition-all text-left ${
+                      selectedCategory === cat.name
+                        ? "bg-black text-white"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    {cat.icon}
+                    <span>{cat.name}</span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -487,16 +570,18 @@ export default function HomeClient({ initialProducts }: Props) {
 
               <ul className="space-y-0.5">
                 {infoLinks.map((item) => (
-                  <li
-                    key={item.path}
-                    onClick={() => {
-                      router.push(item.path);
-                      setMobileMenuOpen(false);
-                    }}
-                    className="cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded text-gray-600 hover:bg-gray-100"
-                  >
-                    <span>{item.icon}</span>
-                    <span>{item.label}</span>
+                  <li key={item.path}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        router.push(item.path);
+                        setMobileMenuOpen(false);
+                      }}
+                      className="w-full cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded text-gray-600 hover:bg-gray-100 text-left"
+                    >
+                      <span>{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -508,6 +593,7 @@ export default function HomeClient({ initialProducts }: Props) {
       )}
 
       <div className="flex">
+
         {/* Desktop sidebar */}
         <aside
           className={`hidden md:block bg-white border-r border-gray-200 p-4 transition-all duration-300 flex-shrink-0 ${
@@ -515,8 +601,17 @@ export default function HomeClient({ initialProducts }: Props) {
           }`}
         >
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            type="button"
+            onClick={() =>
+              setSidebarOpen((open) => !open)
+            }
             className="mb-4 bg-black text-white px-2 py-1 rounded text-sm"
+            aria-label={
+              sidebarOpen
+                ? "Collapse sidebar"
+                : "Expand sidebar"
+            }
+            aria-expanded={sidebarOpen}
           >
             {sidebarOpen ? "←" : "☰"}
           </button>
@@ -529,19 +624,26 @@ export default function HomeClient({ initialProducts }: Props) {
 
               <ul className="space-y-0.5">
                 {categories.map((cat) => (
-                  <li
-                    key={cat.name}
-                    onClick={() =>
-                      setSelectedCategory(cat.name)
-                    }
-                    className={`cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded transition-all ${
-                      selectedCategory === cat.name
-                        ? "bg-black text-white"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    {cat.icon}
-                    <span>{cat.name}</span>
+                  <li key={cat.name}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        selectCategory(cat.name)
+                      }
+                      aria-current={
+                        selectedCategory === cat.name
+                          ? "page"
+                          : undefined
+                      }
+                      className={`w-full cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded transition-all text-left ${
+                        selectedCategory === cat.name
+                          ? "bg-black text-white"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      {cat.icon}
+                      <span>{cat.name}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -553,15 +655,17 @@ export default function HomeClient({ initialProducts }: Props) {
 
                 <ul className="space-y-0.5">
                   {infoLinks.map((item) => (
-                    <li
-                      key={item.path}
-                      onClick={() =>
-                        router.push(item.path)
-                      }
-                      className="cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded text-gray-600 hover:bg-gray-100"
-                    >
-                      <span>{item.icon}</span>
-                      <span>{item.label}</span>
+                    <li key={item.path}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(item.path)
+                        }
+                        className="w-full cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded text-gray-600 hover:bg-gray-100 text-left"
+                      >
+                        <span>{item.icon}</span>
+                        <span>{item.label}</span>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -573,7 +677,7 @@ export default function HomeClient({ initialProducts }: Props) {
         </aside>
 
         {/* Main content */}
-        <div className="flex-1 w-full">
+        <div className="flex-1 w-full min-w-0">
           <section className="p-3">
             <h2 className="text-lg font-extrabold mb-1 text-gray-900">
               {selectedCategory === "Home"
@@ -603,6 +707,7 @@ export default function HomeClient({ initialProducts }: Props) {
                   }
                 >
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleWishlist(p.id);
@@ -639,6 +744,7 @@ export default function HomeClient({ initialProducts }: Props) {
 
                   <div className="flex gap-1 mt-1">
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleAddToCart(p);
@@ -649,6 +755,7 @@ export default function HomeClient({ initialProducts }: Props) {
                     </button>
 
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         openProductPage(p.id);
