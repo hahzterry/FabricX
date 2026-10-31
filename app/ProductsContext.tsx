@@ -1,4 +1,4 @@
-// app/ProductsContext.tsx
+
 "use client";
 
 import {
@@ -52,51 +52,61 @@ const ProductsContext = createContext<ProductsContextValue>({
   loading: true,
 });
 
-export function ProductsProvider({ children }: { children: ReactNode }) {
-  const [products, setProducts] = useState<PrintifyProduct[]>([]);
+export function ProductsProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [products, setProducts] =
+    useState<PrintifyProduct[]>([]);
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
-        const res = await fetch("/api/fabricx/products", {
-  signal: AbortSignal.timeout(3000),
-});
+
+        // No 3-second timeout.
+        const res = await fetch(
+          "/api/fabricx/products"
+        );
+
         if (!res.ok) {
-          setProducts([]);
-          return;
+          throw new Error(
+            `Products API returned ${res.status}`
+          );
         }
+
         const json = await res.json();
 
-        const list: PrintifyProduct[] = (json?.data ?? []).map((p: any) => {
-          const rawVariants: any[] = Array.isArray(p.variants)
-            ? p.variants
-            : [];
+        const list: PrintifyProduct[] = (
+          json?.data ?? []
+        ).map((p: any) => {
+          const rawVariants: any[] =
+            Array.isArray(p.variants)
+              ? p.variants
+              : [];
 
-          // ✅ FIXED — only filter by is_enabled, ignore is_available
-          // Printify marks variants as is_available:false even when enabled
-          const filteredVariants: PrintifyVariant[] = rawVariants.filter(
-            (v: any) => {
-              const enabled =
-                v.is_enabled === undefined ? true : v.is_enabled !== false;
-              return enabled;
-            }
-          );
+          // Preserve original FabricX variant filtering.
+          const filteredVariants: PrintifyVariant[] =
+            rawVariants.filter((v: any) => {
+              return v.is_enabled !== false;
+            });
 
-          const normalizedOptions: PrintifyOptionType[] = Array.isArray(
-            p.options
-          )
-            ? p.options
-            : [];
+          const normalizedOptions: PrintifyOptionType[] =
+            Array.isArray(p.options)
+              ? p.options
+              : [];
 
-          const normalizedImages: PrintifyImage[] = Array.isArray(p.images)
-            ? p.images.map((img: any) => ({
-                src: img.src,
-                is_default: img.is_default,
-                position: img.position,
-              }))
-            : [];
+          const normalizedImages: PrintifyImage[] =
+            Array.isArray(p.images)
+              ? p.images.map((img: any) => ({
+                  src: img.src,
+                  is_default: img.is_default,
+                  position: img.position,
+                }))
+              : [];
 
           return {
             id: String(p.id),
@@ -110,18 +120,23 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
         });
 
         setProducts(list);
-      } catch (e) {
-        console.error(e);
-        setProducts([]);
+      } catch (error) {
+        console.error(
+          "FabricX product loading error:",
+          error
+        );
       } finally {
         setLoading(false);
       }
     }
+
     load();
   }, []);
 
   return (
-    <ProductsContext.Provider value={{ products, loading }}>
+    <ProductsContext.Provider
+      value={{ products, loading }}
+    >
       {children}
     </ProductsContext.Provider>
   );
