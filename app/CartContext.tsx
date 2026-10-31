@@ -1,11 +1,13 @@
+
 "use client";
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
-  ReactNode,
+  type ReactNode,
 } from "react";
 
 export type CartItem = {
@@ -18,65 +20,165 @@ export type CartItem = {
   color?: string | null;
 };
 
+type AddCartItem = Omit<CartItem, "quantity"> & {
+  quantity?: number;
+};
+
 type CartContextValue = {
   cart: CartItem[];
-  addItem: (item: Omit<CartItem, "quantity"> & { quantity?: number }) => void;
+  addItem: (item: AddCartItem) => void;
   removeItem: (id: string) => void;
   clearCart: () => void;
-  updateQuantity: (id: string, quantity: number) => void;
+  updateQuantity: (
+    id: string,
+    quantity: number
+  ) => void;
   wishlist: string[];
   toggleWishlist: (id: string) => void;
   isInWishlist: (id: string) => boolean;
+  cartCount: number;
+  hydrated: boolean;
 };
 
-const CartContext = createContext<CartContextValue>({
-  cart: [],
-  addItem: () => {},
-  removeItem: () => {},
-  clearCart: () => {},
-  updateQuantity: () => {},
-  wishlist: [],
-  toggleWishlist: () => {},
-  isInWishlist: () => false,
-});
+const CartContext = createContext<
+  CartContextValue | undefined
+>(undefined);
 
 const CART_STORAGE_KEY = "fabricx_cart_v1";
 const WISHLIST_STORAGE_KEY = "fabricx_wishlist_v1";
 
-export function CartProvider({ children }: { children: ReactNode }) {
+export function cartItemKey(
+  item: Pick<CartItem, "id" | "variant_id">
+): string {
+  return `${item.id}:${item.variant_id}`;
+}
+
+function normalizeStoredCart(value: unknown): CartItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const items = new Map<string, CartItem>();
+
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+
+    const item = raw as Record<string, unknown>;
+
+    const id = String(item.id ?? "");
+    const variantId = Number(
+      item.variant_id ?? item.variantId
+    );
+    const price = Number(item.price);
+    const quantity = Number(item.quantity ?? 1);
+
+    if (
+      !id ||
+      !Number.isSafeInteger(variantId) ||
+      variantId <= 0 ||
+      !Number.isFinite(price) ||
+      price < 0 ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0
+    ) {
+      continue;
+    }
+
+    const normalized: CartItem = {
+      id,
+      variant_id: variantId,
+      name: String(item.name ?? "Product"),
+      price,
+      quantity: Math.max(1, Math.floor(quantity)),
+      size:
+        typeof item.size === "string"
+          ? item.size
+          : null,
+      color:
+        typeof item.color === "string"
+          ? item.color
+          : null,
+    };
+
+    const key = cartItemKey(normalized);
+    const existing = items.get(key);
+
+    if (existing) {
+      items.set(key, {
+        ...normalized,
+        quantity:
+          existing.quantity + normalized.quantity,
+      });
+    } else {
+      items.set(key, normalized);
+    }
+  }
+
+  return Array.from(items.values());
+}
+
+export function CartProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
+  /* =====================================================
+     RESTORE SAVED CART AND WISHLIST
+  ===================================================== */
+
   useEffect(() => {
     try {
-      const storedCart = window.localStorage.getItem(CART_STORAGE_KEY);
-      const storedWishlist = window.localStorage.getItem(WISHLIST_STORAGE_KEY);
+      const storedCart = window.localStorage.getItem(
+        CART_STORAGE_KEY
+      );
+
+      const storedWishlist =
+        window.localStorage.getItem(
+          WISHLIST_STORAGE_KEY
+        );
 
       if (storedCart) {
-        const parsed = JSON.parse(storedCart);
-        if (Array.isArray(parsed)) {
-          setCart(
-            parsed.map((item: any) => ({
-              ...item,
-              variant_id: Number(
-                item.variant_id ?? item.variantId ?? 0
-              ),
-            }))
-          );
-        }
+        setCart(
+          normalizeStoredCart(JSON.parse(storedCart))
+        );
       }
 
       if (storedWishlist) {
         const parsed = JSON.parse(storedWishlist);
-        if (Array.isArray(parsed)) setWishlist(parsed);
+
+        if (Array.isArray(parsed)) {
+          setWishlist(
+            Array.from(
+              new Set(
+                parsed
+                  .filter(
+                    (id): id is string =>
+                      typeof id === "string"
+                  )
+              )
+            )
+          );
+        }
       }
     } catch (error) {
-      console.error("Failed to load cart:", error);
+      console.error(
+        "[Zodiac Datn] Failed to restore cart:",
+        error
+      );
     } finally {
       setHydrated(true);
     }
   }, []);
+
+  /* =====================================================
+     PERSIST CART
+  ===================================================== */
 
   useEffect(() => {
     if (!hydrated) return;
@@ -87,9 +189,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
         JSON.stringify(cart)
       );
     } catch (error) {
-      console.error("Failed to save cart:", error);
+      console.error(
+        "[Zodiac Datn] Failed to save cart:",
+        error
+      );
     }
   }, [cart, hydrated]);
+
+  /* =====================================================
+     PERSIST WISHLIST
+  ===================================================== */
 
   useEffect(() => {
     if (!hydrated) return;
@@ -100,69 +209,171 @@ export function CartProvider({ children }: { children: ReactNode }) {
         JSON.stringify(wishlist)
       );
     } catch (error) {
-      console.error("Failed to save wishlist:", error);
+      console.error(
+        "[Zodiac Datn] Failed to save wishlist:",
+        error
+      );
     }
   }, [wishlist, hydrated]);
 
-  const addItem: CartContextValue["addItem"] = (item) => {
-    setCart((prev) => {
-      const existingIndex = prev.findIndex(
-        (ci) =>
-          ci.id === item.id &&
-          ci.variant_id === item.variant_id
+  /* =====================================================
+     ADD ITEM
+  ===================================================== */
+
+  const addItem = useCallback(
+    (item: AddCartItem) => {
+      const id = String(item.id);
+      const variantId = Number(item.variant_id);
+      const price = Number(item.price);
+      const quantity = Math.max(
+        1,
+        Math.floor(Number(item.quantity ?? 1))
       );
 
-      if (existingIndex !== -1) {
-        const updated = [...prev];
-
-        updated[existingIndex] = {
-          ...updated[existingIndex],
-          quantity:
-            updated[existingIndex].quantity + (item.quantity ?? 1),
-        };
-
-        return updated;
+      if (!id) {
+        throw new Error("Invalid product ID.");
       }
 
-      return [
-        ...prev,
-        {
-          ...item,
-          quantity: item.quantity ?? 1,
-        },
-      ];
-    });
-  };
+      if (
+        !Number.isSafeInteger(variantId) ||
+        variantId <= 0
+      ) {
+        throw new Error(
+          "Invalid Printify variant ID."
+        );
+      }
 
-  const removeItem = (id: string) => {
-    setCart((prev) =>
-      prev.filter(
-        (item) => `${item.id}:${item.variant_id}` !== id
-      )
-    );
-  };
+      if (
+        !Number.isFinite(price) ||
+        price < 0
+      ) {
+        throw new Error("Invalid product price.");
+      }
 
-  const clearCart = () => setCart([]);
+      if (
+        !Number.isFinite(quantity) ||
+        quantity < 1
+      ) {
+        throw new Error("Invalid quantity.");
+      }
 
-  const updateQuantity = (id: string, quantity: number) => {
-    setCart((prev) =>
-      prev.map((item) =>
-        `${item.id}:${item.variant_id}` === id
-          ? { ...item, quantity: Math.max(1, quantity) }
-          : item
-      )
-    );
-  };
+      const normalized: CartItem = {
+        id,
+        variant_id: variantId,
+        name: item.name,
+        price,
+        quantity,
+        size: item.size ?? null,
+        color: item.color ?? null,
+      };
 
-  const toggleWishlist = (id: string) => {
-    setWishlist((prev) =>
-      prev.includes(id)
-        ? prev.filter((x) => x !== id)
-        : [...prev, id]
-    );
-  };
+      const key = cartItemKey(normalized);
 
-  const isInWishlist = (id: string) => wishlist.includes(id);
+      setCart((previous) => {
+        const existingIndex = previous.findIndex(
+          (entry) =>
+            cartItemKey(entry) === key
+        );
+
+        if (existingIndex >= 0) {
+          return previous.map((entry, index) =>
+            index === existingIndex
+              ? {
+                  ...entry,
+                  quantity:
+                    entry.quantity + quantity,
+                }
+              : entry
+          );
+        }
+
+        return [...previous, normalized];
+      });
+    },
+    []
+  );
+
+  /* =====================================================
+     REMOVE ITEM
+  ===================================================== */
+
+  const removeItem = useCallback(
+    (key: string) => {
+      setCart((previous) =>
+        previous.filter(
+          (item) => cartItemKey(item) !== key
+        )
+      );
+    },
+    []
+  );
+
+  /* =====================================================
+     UPDATE QUANTITY
+  ===================================================== */
+
+  const updateQuantity = useCallback(
+    (key: string, quantity: number) => {
+      if (!Number.isFinite(quantity)) {
+        return;
+      }
+
+      const nextQuantity = Math.max(
+        1,
+        Math.floor(quantity)
+      );
+
+      setCart((previous) =>
+        previous.map((item) =>
+          cartItemKey(item) === key
+            ? {
+                ...item,
+                quantity: nextQuantity,
+              }
+            : item
+        )
+      );
+    },
+    []
+  );
+
+  /* =====================================================
+     CLEAR CART
+  ===================================================== */
+
+  const clearCart = useCallback(() => {
+    setCart([]);
+  }, []);
+
+  /* =====================================================
+     WISHLIST
+  ===================================================== */
+
+  const toggleWishlist = useCallback(
+    (id: string) => {
+      const productId = String(id);
+
+      setWishlist((previous) =>
+        previous.includes(productId)
+          ? previous.filter(
+              (entry) => entry !== productId
+            )
+          : [...previous, productId]
+      );
+    },
+    []
+  );
+
+  const isInWishlist = useCallback(
+    (id: string) =>
+      wishlist.includes(String(id)),
+    [wishlist]
+  );
+
+  const cartCount = cart.reduce(
+    (total, item) => total + item.quantity,
+    0
+  );
 
   return (
     <CartContext.Provider
@@ -175,6 +386,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         wishlist,
         toggleWishlist,
         isInWishlist,
+        cartCount,
+        hydrated,
       }}
     >
       {children}
@@ -182,6 +395,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useCart() {
-  return useContext(CartContext);
+export function useCart(): CartContextValue {
+  const context = useContext(CartContext);
+
+  if (!context) {
+    throw new Error(
+      "useCart must be used inside CartProvider. Check app/layout.tsx."
+    );
+  }
+
+  return context;
 }
