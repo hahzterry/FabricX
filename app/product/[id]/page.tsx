@@ -73,6 +73,7 @@ function stripHtml(value: string) {
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
     .replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ")
     .trim();
@@ -86,6 +87,7 @@ export default function ProductPage(): React.ReactElement {
     addItem,
     toggleWishlist,
     isInWishlist,
+    wishlist,
   } = useCart();
 
   const {
@@ -495,17 +497,99 @@ export default function ProductPage(): React.ReactElement {
   }
 
   /* =======================================================
+     SHARED STORE HEADER
+
+     Matches the homepage:
+     Store name, currency, wishlist, cart.
+  ======================================================= */
+
+  const storeHeader = (
+    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white shadow-sm">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="shrink-0 rounded-lg border border-black px-3 py-2 text-sm"
+            aria-label="Go back"
+          >
+            <ArrowLeftIcon className="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="truncate text-left text-lg font-black tracking-tight sm:text-xl"
+          >
+            Zodiac Datn Shop
+          </button>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <select
+            aria-label="Currency"
+            value={currency}
+            onChange={(event) =>
+              setCurrency(
+                event.target.value as typeof currency
+              )
+            }
+            className="rounded-lg border border-black bg-white px-2 py-2 text-xs"
+          >
+            {[
+              "USD",
+              "EUR",
+              "GBP",
+              "INR",
+              "JPY",
+              "AUD",
+              "CAD",
+              "CHF",
+            ].map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={() => router.push("/wishlist")}
+            className="px-1 text-xl"
+            aria-label={`Wishlist: ${wishlist.length} items`}
+          >
+            {wishlist.length > 0 ? "♥" : "♡"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/cart")}
+            className="px-1 text-xl"
+            aria-label="Shopping cart"
+          >
+            🛒
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+
+  /* =======================================================
      LOADING AND ERROR STATES
   ======================================================= */
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-white text-black">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-9 w-9 animate-spin rounded-full border-4 border-gray-200 border-t-black" />
-          <p className="text-sm text-gray-600">
-            Loading product...
-          </p>
+      <main className="min-h-screen bg-white text-black">
+        {storeHeader}
+
+        <div className="flex min-h-[70vh] items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto mb-4 h-9 w-9 animate-spin rounded-full border-4 border-gray-200 border-t-black" />
+            <p className="text-sm text-gray-600">
+              Loading product...
+            </p>
+          </div>
         </div>
       </main>
     );
@@ -513,31 +597,35 @@ export default function ProductPage(): React.ReactElement {
 
   if (!product) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-white px-4 text-center text-black">
-        <h1 className="mb-3 text-xl font-bold">
-          Unable to load product
-        </h1>
+      <main className="min-h-screen bg-white text-black">
+        {storeHeader}
 
-        <p className="mb-5 max-w-sm text-sm text-gray-500">
-          {error || "Product not found."}
-        </p>
+        <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 text-center">
+          <h1 className="mb-3 text-xl font-bold">
+            Unable to load product
+          </h1>
 
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => void loadProduct()}
-            className="rounded-lg border border-black px-5 py-3 text-sm font-bold"
-          >
-            Retry
-          </button>
+          <p className="mb-5 max-w-sm text-sm text-gray-500">
+            {error || "Product not found."}
+          </p>
 
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="rounded-lg bg-black px-5 py-3 text-sm font-bold text-white"
-          >
-            Back to Shop
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => void loadProduct()}
+              className="rounded-lg border border-black px-5 py-3 text-sm font-bold"
+            >
+              Retry
+            </button>
+
+            <button
+              type="button"
+              onClick={() => router.push("/")}
+              className="rounded-lg bg-black px-5 py-3 text-sm font-bold text-white"
+            >
+              Back to Shop
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -567,59 +655,7 @@ export default function ProductPage(): React.ReactElement {
         price={displayPrice / 100}
       />
 
-      {/* HEADER */}
-      <header className="sticky top-0 z-40 flex items-center justify-between gap-2 border-b border-gray-200 bg-white p-3 shadow-sm">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-lg bg-gray-100 p-1.5 hover:bg-gray-200"
-            aria-label="Go back"
-          >
-            <ArrowLeftIcon className="h-5 w-5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="text-left text-lg font-bold sm:text-xl"
-          >
-            Zodiac Datn Shop
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-gray-600 md:inline">
-            Prices in {currency}
-          </span>
-
-          <select
-            aria-label="Currency"
-            value={currency}
-            onChange={(event) =>
-              setCurrency(
-                event.target.value as typeof currency
-              )
-            }
-            className="max-w-[75px] rounded border border-gray-300 bg-white px-2 py-1 text-xs"
-          >
-            {[
-              "USD",
-              "EUR",
-              "GBP",
-              "INR",
-              "JPY",
-              "AUD",
-              "CAD",
-              "CHF",
-            ].map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
-        </div>
-      </header>
+      {storeHeader}
 
       {/* PRODUCT CONTENT */}
       <section className="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-3 md:grid-cols-2 md:gap-10 md:p-6">
@@ -796,7 +832,20 @@ export default function ProductPage(): React.ReactElement {
               role="status"
               className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm"
             >
-              {cartMessage}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>{cartMessage}</span>
+
+                {cartMessage ===
+                  "Added to cart successfully." && (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/cart")}
+                    className="font-bold underline"
+                  >
+                    View Cart
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
