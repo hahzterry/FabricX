@@ -1,53 +1,62 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+
 import { useCart } from "./CartContext";
 import { useCurrency } from "./CurrencyContext";
 import { useProducts } from "./ProductsContext";
+
 import {
-  RectangleGroupIcon,
-  Squares2X2Icon,
-  BoltIcon,
   Bars3Icon,
-  SparklesIcon,
-  UserIcon,
   HomeIcon,
+  MagnifyingGlassIcon,
+  ShoppingBagIcon,
+  HeartIcon,
+  XMarkIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 
-type CategoryName =
-  | "Home"
-  | "T-shirts"
-  | "Hoodies"
-  | "Sweatshirts"
-  | "Tank Tops"
-  | "Long Sleeve Shirts"
-  | "Polo Shirts"
-  | "Leggings"
-  | "Shorts"
-  | "Dresses & Skirts"
-  | "Kids & Baby Clothing"
-  | "Tote Bags"
-  | "Candles"
-  | "Stickers"
-  | "Accessories"
-  | "Other Products";
+type ZodiacSign =
+  | "Aries"
+  | "Taurus"
+  | "Gemini"
+  | "Cancer"
+  | "Leo"
+  | "Virgo"
+  | "Libra"
+  | "Scorpio"
+  | "Sagittarius"
+  | "Capricorn"
+  | "Aquarius"
+  | "Pisces";
 
-type Category = {
+type CategoryName =
+  | "All Signs"
+  | ZodiacSign
+  | "Other Zodiac Merch";
+
+type ZodiacCategory = {
   name: CategoryName;
-  icon: React.ReactElement;
+  symbol: string;
+  dates?: string;
 };
 
 type UiProduct = {
   id: string;
   name: string;
   price: number;
-  category: CategoryName;
+  zodiacSigns: ZodiacSign[];
   variantId: number | null;
-  rating: number;
-  reviews: number;
   image: string;
   tags: string[];
 };
@@ -58,135 +67,140 @@ type Props = {
 
 const PAGE_SIZE = 12;
 
-const categories: Category[] = [
-  { name: "Home", icon: <HomeIcon className="h-4 w-4" /> },
-  { name: "T-shirts", icon: <RectangleGroupIcon className="h-4 w-4" /> },
-  { name: "Hoodies", icon: <Squares2X2Icon className="h-4 w-4" /> },
-  { name: "Sweatshirts", icon: <Squares2X2Icon className="h-4 w-4" /> },
-  { name: "Tank Tops", icon: <BoltIcon className="h-4 w-4" /> },
+const zodiacCategories: ZodiacCategory[] = [
   {
-    name: "Long Sleeve Shirts",
-    icon: <RectangleGroupIcon className="h-4 w-4" />,
+    name: "All Signs",
+    symbol: "✦",
   },
   {
-    name: "Polo Shirts",
-    icon: <RectangleGroupIcon className="h-4 w-4" />,
-  },
-  { name: "Leggings", icon: <Bars3Icon className="h-4 w-4" /> },
-  { name: "Shorts", icon: <Bars3Icon className="h-4 w-4" /> },
-  {
-    name: "Dresses & Skirts",
-    icon: <SparklesIcon className="h-4 w-4" />,
+    name: "Aries",
+    symbol: "♈",
+    dates: "Mar 21 – Apr 19",
   },
   {
-    name: "Kids & Baby Clothing",
-    icon: <UserIcon className="h-4 w-4" />,
+    name: "Taurus",
+    symbol: "♉",
+    dates: "Apr 20 – May 20",
   },
   {
-    name: "Tote Bags",
-    icon: <RectangleGroupIcon className="h-4 w-4" />,
-  },
-  { name: "Candles", icon: <SparklesIcon className="h-4 w-4" /> },
-  {
-    name: "Stickers",
-    icon: <Squares2X2Icon className="h-4 w-4" />,
+    name: "Gemini",
+    symbol: "♊",
+    dates: "May 21 – Jun 20",
   },
   {
-    name: "Accessories",
-    icon: <SparklesIcon className="h-4 w-4" />,
+    name: "Cancer",
+    symbol: "♋",
+    dates: "Jun 21 – Jul 22",
   },
   {
-    name: "Other Products",
-    icon: <Squares2X2Icon className="h-4 w-4" />,
+    name: "Leo",
+    symbol: "♌",
+    dates: "Jul 23 – Aug 22",
+  },
+  {
+    name: "Virgo",
+    symbol: "♍",
+    dates: "Aug 23 – Sep 22",
+  },
+  {
+    name: "Libra",
+    symbol: "♎",
+    dates: "Sep 23 – Oct 22",
+  },
+  {
+    name: "Scorpio",
+    symbol: "♏",
+    dates: "Oct 23 – Nov 21",
+  },
+  {
+    name: "Sagittarius",
+    symbol: "♐",
+    dates: "Nov 22 – Dec 21",
+  },
+  {
+    name: "Capricorn",
+    symbol: "♑",
+    dates: "Dec 22 – Jan 19",
+  },
+  {
+    name: "Aquarius",
+    symbol: "♒",
+    dates: "Jan 20 – Feb 18",
+  },
+  {
+    name: "Pisces",
+    symbol: "♓",
+    dates: "Feb 19 – Mar 20",
+  },
+  {
+    name: "Other Zodiac Merch",
+    symbol: "✧",
   },
 ];
 
+const zodiacSigns: ZodiacSign[] = [
+  "Aries",
+  "Taurus",
+  "Gemini",
+  "Cancer",
+  "Leo",
+  "Virgo",
+  "Libra",
+  "Scorpio",
+  "Sagittarius",
+  "Capricorn",
+  "Aquarius",
+  "Pisces",
+];
+
 const infoLinks = [
-  { label: "About Zodiac Datn Shop", path: "/about", icon: "ℹ️" },
-  { label: "Blog", path: "/blog", icon: "✍️" },
-  { label: "Contact Us", path: "/contact", icon: "📧" },
+  {
+    label: "About Zodiac DatN Shop",
+    path: "/about",
+  },
+  {
+    label: "Blog",
+    path: "/blog",
+  },
+  {
+    label: "Contact Us",
+    path: "/contact",
+  },
   {
     label: "Shipping Policy",
     path: "/shipping-policy",
-    icon: "🚚",
   },
   {
     label: "Refund Policy",
     path: "/refund-policy",
-    icon: "↩️",
   },
   {
     label: "Privacy Policy",
     path: "/privacy-policy",
-    icon: "🔒",
   },
   {
     label: "Terms of Service",
     path: "/terms",
-    icon: "📄",
   },
 ];
 
-function deriveCategory(
+function deriveZodiacSigns(
   title: string,
-  tags: string[] | undefined
-): CategoryName {
-  const normalizedTitle = title.toLowerCase();
-  const normalizedTags = (tags ?? []).map((tag) =>
-    String(tag).toLowerCase()
-  );
+  tags: string[] = []
+): ZodiacSign[] {
+  const searchableText = [
+    title,
+    ...tags.map((tag) => String(tag)),
+  ].join(" ");
 
-  const matches = (pattern: RegExp) =>
-    pattern.test(normalizedTitle) ||
-    normalizedTags.some((tag) => pattern.test(tag));
+  return zodiacSigns.filter((sign) => {
+    const pattern = new RegExp(
+      `\\b${sign}\\b`,
+      "i"
+    );
 
-  if (matches(/\b(tote|canvas bag|shopping bag)\b/))
-    return "Tote Bags";
-
-  if (matches(/\b(candle|soy wax|scented soy)\b/))
-    return "Candles";
-
-  if (matches(/\b(sticker|kiss.cut|die.cut|decal)\b/))
-    return "Stickers";
-
-  if (matches(/\b(hoodie|hooded|pullover hoodie)\b/))
-    return "Hoodies";
-
-  if (matches(/\b(sweatshirt|crewneck|sweater)\b/))
-    return "Sweatshirts";
-
-  if (matches(/\b(tank top|tanktop|sleeveless)\b/))
-    return "Tank Tops";
-
-  if (matches(/\b(long.sleeve)\b/))
-    return "Long Sleeve Shirts";
-
-  if (matches(/\b(polo)\b/))
-    return "Polo Shirts";
-
-  if (matches(/\b(legging|leggings)\b/))
-    return "Leggings";
-
-  if (matches(/\b(shorts)\b/))
-    return "Shorts";
-
-  if (matches(/\b(dress|skirt)\b/))
-    return "Dresses & Skirts";
-
-  if (matches(/\b(kid|baby|toddler|youth|infant)\b/))
-    return "Kids & Baby Clothing";
-
-  if (matches(/\b(t.shirt|tee|shirt|jersey)\b/))
-    return "T-shirts";
-
-  if (
-    matches(
-      /\b(mug|hat|cap|phone case|keychain|poster|notebook|pillow|blanket|accessor)\b/
-    )
-  )
-    return "Accessories";
-
-  return "Other Products";
+    return pattern.test(searchableText);
+  });
 }
 
 function NewsletterBox() {
@@ -194,12 +208,13 @@ function NewsletterBox() {
   const [status, setStatus] = useState<
     "idle" | "loading" | "success" | "error"
   >("idle");
+
   const [message, setMessage] = useState("");
 
-  const handleSubscribe = async () => {
+  async function handleSubscribe() {
     if (!email.trim()) {
       setStatus("error");
-      setMessage("Enter your email");
+      setMessage("Enter your email.");
       return;
     }
 
@@ -207,19 +222,26 @@ function NewsletterBox() {
     setMessage("");
 
     try {
-      const res = await fetch("/api/newsletter", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
-      });
+      const response = await fetch(
+        "/api/newsletter",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+          }),
+        }
+      );
 
-      const data = await res.json();
+      const data = await response.json();
 
-      if (!res.ok || !data.success) {
+      if (!response.ok || !data.success) {
         setStatus("error");
-        setMessage(data.error || "Something went wrong");
+        setMessage(
+          data.error || "Unable to subscribe."
+        );
         return;
       }
 
@@ -228,44 +250,47 @@ function NewsletterBox() {
       setEmail("");
     } catch {
       setStatus("error");
-      setMessage("Something went wrong");
+      setMessage("Unable to subscribe.");
     }
-  };
+  }
 
   return (
-    <div className="border-t border-gray-100 mt-4 pt-3 px-2">
-      <p className="text-xs text-gray-400 uppercase tracking-widest mb-2">
-        Stay Updated
+    <div className="border-t border-gray-100 mt-5 pt-4">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+        Stay Connected
       </p>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="space-y-2">
         <input
           type="email"
           value={email}
-          onChange={(e) => {
-            setEmail(e.target.value);
-            if (status !== "idle") setStatus("idle");
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setStatus("idle");
           }}
-          placeholder="your@email.com"
+          placeholder="Email address"
           disabled={status === "loading"}
-          className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs outline-none focus:border-black transition-colors disabled:opacity-50"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-black"
         />
 
         <button
+          type="button"
           onClick={handleSubscribe}
           disabled={status === "loading"}
-          className="w-full bg-black text-white py-1.5 rounded text-xs font-semibold hover:bg-gray-900 transition-colors disabled:opacity-50"
+          className="w-full bg-black text-white rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50"
         >
-          {status === "loading" ? "..." : "Subscribe"}
+          {status === "loading"
+            ? "Subscribing..."
+            : "Subscribe"}
         </button>
       </div>
 
       {message && (
         <p
-          className={`text-xs mt-1.5 ${
+          className={`mt-2 text-xs ${
             status === "success"
               ? "text-green-600"
-              : "text-red-500"
+              : "text-red-600"
           }`}
         >
           {message}
@@ -275,23 +300,133 @@ function NewsletterBox() {
   );
 }
 
+function SidebarContent({
+  selectedCategory,
+  onSelectCategory,
+  onNavigate,
+}: {
+  selectedCategory: CategoryName;
+  onSelectCategory: (
+    category: CategoryName
+  ) => void;
+  onNavigate: (path: string) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="px-2 mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400">
+          Shop By Zodiac Sign
+        </p>
+
+        <div className="space-y-1">
+          {zodiacCategories.map((category) => {
+            const selected =
+              selectedCategory === category.name;
+
+            return (
+              <button
+                key={category.name}
+                type="button"
+                onClick={() =>
+                  onSelectCategory(category.name)
+                }
+                className={`w-full flex items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors ${
+                  selected
+                    ? "bg-black text-white"
+                    : "text-gray-800 hover:bg-gray-100"
+                }`}
+              >
+                <span className="w-7 shrink-0 text-center text-xl leading-none">
+                  {category.symbol}
+                </span>
+
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold">
+                    {category.name}
+                  </span>
+
+                  {category.dates && (
+                    <span
+                      className={`block text-[10px] mt-0.5 ${
+                        selected
+                          ? "text-gray-300"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      {category.dates}
+                    </span>
+                  )}
+                </span>
+
+                {selected ? (
+                  <span className="text-xs">✓</span>
+                ) : (
+                  <ChevronRightIcon className="w-3.5 h-3.5 text-gray-400" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100 pt-4">
+        <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400">
+          Information
+        </p>
+
+        <div className="space-y-1">
+          {infoLinks.map((link) => (
+            <button
+              key={link.path}
+              type="button"
+              onClick={() =>
+                onNavigate(link.path)
+              }
+              className="w-full text-left rounded-lg px-2 py-2 text-xs text-gray-600 hover:bg-gray-100"
+            >
+              {link.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <NewsletterBox />
+    </div>
+  );
+}
+
+function ProductImage({
+  src,
+  alt,
+  priority = false,
+}: {
+  src: string;
+  alt: string;
+  priority?: boolean;
+}) {
+  if (!src) {
+    return (
+      <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+        No Image
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      priority={priority}
+      sizes="(max-width: 768px) 50vw, 25vw"
+      className="object-contain transition-transform duration-300 group-hover:scale-105"
+    />
+  );
+}
+
 export default function HomeClient({
-  initialProducts,
+  initialProducts = [],
 }: Props) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  const [selectedCategory, setSelectedCategory] =
-    useState<CategoryName>("Home");
-
-  const [searchTerm, setSearchTerm] = useState("");
-  const [mobileMenuOpen, setMobileMenuOpen] =
-    useState(false);
-
-  const [visibleCount, setVisibleCount] =
-    useState(PAGE_SIZE);
-
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-
   const router = useRouter();
 
   const {
@@ -301,212 +436,371 @@ export default function HomeClient({
     wishlist,
   } = useCart();
 
-  const { currency, setCurrency, format } = useCurrency();
+  const {
+    currency,
+    setCurrency,
+    format,
+  } = useCurrency();
 
   const {
     products: rawProducts,
     loading,
   } = useProducts();
 
-  const allProducts: UiProduct[] = useMemo(() => {
-    if (rawProducts.length > 0) {
-      return rawProducts.map((p) => {
-        const mainImage =
-          p.images?.find(
-            (img: any) => img.is_default
-          )?.src ??
-          p.images?.[0]?.src ??
-          "https://via.placeholder.com/200";
+  const [sidebarOpen, setSidebarOpen] =
+    useState(true);
 
-        const firstVariant =
-          p.variants?.find(
-            (v) =>
-              v.is_default &&
-              v.is_enabled !== false
-          ) ??
-          p.variants?.find(
-            (v) => v.is_enabled !== false
-          ) ??
-          null;
+  const [
+    mobileMenuOpen,
+    setMobileMenuOpen,
+  ] = useState(false);
 
-        return {
-          id: String(p.id),
-          name: p.title,
-          price: firstVariant
-            ? firstVariant.price / 100
-            : 0,
-          variantId: firstVariant?.id ?? null,
-          category: deriveCategory(p.title, p.tags),
-          rating: 4.5,
-          reviews: 128,
-          image: mainImage,
-          tags: p.tags ?? [],
-        };
-      });
+  const [
+    selectedCategory,
+    setSelectedCategory,
+  ] = useState<CategoryName>("All Signs");
+
+  const [searchTerm, setSearchTerm] =
+    useState("");
+
+  const [visibleCount, setVisibleCount] =
+    useState(PAGE_SIZE);
+
+  const loadMoreRef =
+    useRef<HTMLDivElement | null>(null);
+
+  const allProducts = useMemo<UiProduct[]>(() => {
+    if (rawProducts.length === 0) {
+      return initialProducts.map((product) => ({
+        ...product,
+        zodiacSigns:
+          product.zodiacSigns ??
+          deriveZodiacSigns(
+            product.name,
+            product.tags
+          ),
+      }));
     }
 
-    return initialProducts ?? [];
+    return rawProducts.map((product) => {
+      const images = product.images ?? [];
+
+      const defaultImage =
+        images.find(
+          (image) => image.is_default
+        )?.src ??
+        images[0]?.src ??
+        "";
+
+      const variants =
+        product.variants ?? [];
+
+      const selectedVariant =
+        variants.find(
+          (variant) =>
+            variant.is_default &&
+            variant.is_enabled !== false
+        ) ??
+        variants.find(
+          (variant) =>
+            variant.is_enabled !== false
+        ) ??
+        null;
+
+      return {
+        id: String(product.id),
+        name: product.title,
+        price: selectedVariant
+          ? selectedVariant.price / 100
+          : 0,
+        variantId:
+          selectedVariant?.id ?? null,
+        image: defaultImage,
+        tags: product.tags ?? [],
+        zodiacSigns: deriveZodiacSigns(
+          product.title,
+          product.tags ?? []
+        ),
+      };
+    });
   }, [rawProducts, initialProducts]);
 
   const filteredProducts = useMemo(() => {
-    return allProducts.filter((p) => {
-      const matchesSearch = p.name
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase());
+    const query = searchTerm
+      .trim()
+      .toLowerCase();
 
-      const matchesCategory =
-        selectedCategory === "Home" ||
-        p.category === selectedCategory;
+    return allProducts.filter((product) => {
+      const matchesSearch =
+        !query ||
+        product.name
+          .toLowerCase()
+          .includes(query) ||
+        product.tags.some((tag) =>
+          String(tag)
+            .toLowerCase()
+            .includes(query)
+        );
 
-      return matchesSearch && matchesCategory;
+      let matchesCategory = true;
+
+      if (
+        selectedCategory ===
+        "Other Zodiac Merch"
+      ) {
+        matchesCategory =
+          product.zodiacSigns.length === 0;
+      } else if (
+        selectedCategory !== "All Signs"
+      ) {
+        matchesCategory =
+          product.zodiacSigns.includes(
+            selectedCategory
+          );
+      }
+
+      return (
+        matchesSearch &&
+        matchesCategory
+      );
     });
-  }, [allProducts, searchTerm, selectedCategory]);
+  }, [
+    allProducts,
+    searchTerm,
+    selectedCategory,
+  ]);
 
-  // Reset pagination when the category or search changes.
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [searchTerm, selectedCategory]);
+  }, [selectedCategory, searchTerm]);
 
   const visibleProducts = useMemo(
-    () => filteredProducts.slice(0, visibleCount),
+    () =>
+      filteredProducts.slice(
+        0,
+        visibleCount
+      ),
     [filteredProducts, visibleCount]
   );
 
-  // Load 12 more products when the customer scrolls down.
-  useEffect(() => {
-    const sentinel = loadMoreRef.current;
+  const hasMore =
+    visibleCount < filteredProducts.length;
 
-    if (
-      !sentinel ||
-      visibleCount >= filteredProducts.length
-    ) {
+  useEffect(() => {
+    const target = loadMoreRef.current;
+
+    if (!target || !hasMore) {
       return;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setVisibleCount((count) =>
-            Math.min(
-              count + PAGE_SIZE,
-              filteredProducts.length
-            )
-          );
+    const observer =
+      new IntersectionObserver(
+        (entries) => {
+          if (
+            entries[0]?.isIntersecting
+          ) {
+            setVisibleCount(
+              (previous) =>
+                Math.min(
+                  previous + PAGE_SIZE,
+                  filteredProducts.length
+                )
+            );
+          }
+        },
+        {
+          rootMargin: "500px 0px",
+          threshold: 0,
         }
-      },
-      {
-        rootMargin: "400px 0px",
-        threshold: 0,
-      }
-    );
+      );
 
-    observer.observe(sentinel);
+    observer.observe(target);
 
-    return () => observer.disconnect();
-  }, [visibleCount, filteredProducts.length]);
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    hasMore,
+    filteredProducts.length,
+    visibleCount,
+  ]);
 
-  const openProductPage = (id: string) => {
+  function selectCategory(
+    category: CategoryName
+  ) {
+    setSelectedCategory(category);
+    setMobileMenuOpen(false);
+    setVisibleCount(PAGE_SIZE);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  function navigate(path: string) {
+    setMobileMenuOpen(false);
+    router.push(path);
+  }
+
+  function openProduct(id: string) {
     router.push(`/product/${id}`);
-  };
+  }
 
-  const handleAddToCart = (p: UiProduct) => {
-    if (p.variantId == null) {
-      openProductPage(p.id);
+  function handleAddToCart(
+    product: UiProduct
+  ) {
+    if (product.variantId === null) {
+      openProduct(product.id);
       return;
     }
 
     addItem({
-      id: p.id,
-      variant_id: p.variantId,
-      name: p.name,
-      price: p.price,
+      id: product.id,
+      variant_id: product.variantId,
+      name: product.name,
+      price: product.price,
       size: "Default",
     });
-  };
+  }
 
-  if (loading && allProducts.length === 0) {
+  function renderProductCard(
+    product: UiProduct,
+    index: number
+  ): ReactNode {
     return (
-      <main className="min-h-screen bg-gray-50 text-black">
-        <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 w-full">
-          <div className="flex items-center justify-between px-3 py-2">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-gray-200 rounded animate-pulse" />
-              <div className="w-16 h-5 bg-gray-200 rounded animate-pulse" />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-5 bg-gray-200 rounded animate-pulse" />
-              <div className="w-5 h-5 bg-gray-200 rounded animate-pulse" />
-              <div className="w-5 h-5 bg-gray-200 rounded animate-pulse" />
-            </div>
+      <article
+        key={product.id}
+        className="group relative min-w-0 bg-white border border-gray-200 rounded-xl p-2 md:p-3 hover:border-gray-400 hover:shadow-sm transition-all"
+      >
+        <button
+          type="button"
+          aria-label={`View ${product.name}`}
+          onClick={() =>
+            openProduct(product.id)
+          }
+          className="block w-full text-left"
+        >
+          <div className="relative w-full aspect-square bg-gray-50 rounded-lg overflow-hidden">
+            <ProductImage
+              src={product.image}
+              alt={product.name}
+              priority={index < 2}
+            />
           </div>
+        </button>
 
-          <div className="px-3 pb-2">
-            <div className="h-8 bg-gray-200 rounded-full animate-pulse" />
-          </div>
-        </header>
+        <button
+          type="button"
+          aria-label="Toggle wishlist"
+          onClick={() =>
+            toggleWishlist(product.id)
+          }
+          className="absolute right-4 top-4 z-10 bg-white/95 shadow-sm rounded-full p-1.5"
+        >
+          <HeartIcon
+            className={`w-4 h-4 ${
+              isInWishlist(product.id)
+                ? "fill-red-500 text-red-500"
+                : "text-gray-700"
+            }`}
+          />
+        </button>
 
-        <div className="flex">
-          <aside className="hidden md:block w-14 bg-white border-r border-gray-200 p-4">
-            <div className="w-6 h-6 bg-gray-200 rounded animate-pulse" />
-          </aside>
+        <div className="pt-2">
+          {product.zodiacSigns.length > 0 && (
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1 line-clamp-1">
+              {product.zodiacSigns.join(" · ")}
+            </p>
+          )}
 
-          <div className="flex-1 p-3">
-            <div className="h-6 w-40 bg-gray-200 rounded animate-pulse mb-2" />
-            <div className="h-3 w-64 bg-gray-200 rounded animate-pulse mb-4" />
+          <button
+            type="button"
+            onClick={() =>
+              openProduct(product.id)
+            }
+            className="text-left w-full"
+          >
+            <h3 className="text-xs md:text-sm font-semibold text-gray-900 line-clamp-2 min-h-[2rem]">
+              {product.name}
+            </h3>
+          </button>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="bg-white border border-gray-200 rounded-lg p-2"
-                >
-                  <div className="h-28 bg-gray-200 rounded animate-pulse mb-2" />
-                  <div className="h-3 bg-gray-200 rounded animate-pulse mb-1" />
-                  <div className="h-3 w-2/3 bg-gray-200 rounded animate-pulse mb-2" />
-                  <div className="h-5 bg-gray-200 rounded animate-pulse" />
-                </div>
-              ))}
-            </div>
+          <p className="text-sm md:text-base font-bold text-black mt-1">
+            {format(product.price)}
+          </p>
+
+          <div className="grid grid-cols-2 gap-1.5 mt-2">
+            <button
+              type="button"
+              onClick={() =>
+                handleAddToCart(product)
+              }
+              className="bg-black text-white rounded-md px-1 py-2 text-[10px] md:text-xs font-semibold hover:bg-gray-800"
+            >
+              Add to Cart
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                openProduct(product.id)
+              }
+              className="border border-black text-black rounded-md px-1 py-2 text-[10px] md:text-xs font-semibold hover:bg-black hover:text-white"
+            >
+              Order Now
+            </button>
           </div>
         </div>
-      </main>
+      </article>
     );
   }
 
   return (
     <main className="min-h-screen bg-gray-50 text-black">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 w-full">
-        <div className="flex items-center justify-between px-3 py-2">
-          <div className="flex items-center gap-2">
+      {/* HEADER */}
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between gap-2 px-3 md:px-5 py-3">
+          <div className="flex items-center gap-2 min-w-0">
             <button
+              type="button"
               onClick={() =>
-                setMobileMenuOpen(!mobileMenuOpen)
+                setMobileMenuOpen(true)
               }
-              className="p-1 rounded bg-black text-white text-xs"
-              aria-label="Open menu"
+              className="md:hidden p-1.5 rounded-md bg-black text-white"
+              aria-label="Open categories"
             >
-              ☰
+              <Bars3Icon className="w-5 h-5" />
             </button>
 
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">
-              Zodiac Datn Shop
-            </h1>
+            <button
+              type="button"
+              onClick={() =>
+                selectCategory("All Signs")
+              }
+              className="text-left min-w-0"
+            >
+              <h1 className="text-lg md:text-2xl font-extrabold tracking-tight truncate">
+                Zodiac DatN Shop
+              </h1>
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 md:gap-4">
             <select
               value={currency}
-              onChange={(e) =>
-                setCurrency(e.target.value as any)
+              onChange={(event) =>
+                setCurrency(
+                  event.target.value as any
+                )
               }
-              className="text-xs border border-gray-300 rounded px-1 py-1 bg-white text-gray-800 w-16"
+              aria-label="Currency"
+              className="border border-gray-200 rounded-md bg-white text-xs px-1 py-1.5"
             >
               <option value="USD">USD</option>
               <option value="EUR">EUR</option>
-              <option value="INR">INR</option>
               <option value="GBP">GBP</option>
+              <option value="INR">INR</option>
               <option value="JPY">JPY</option>
               <option value="AUD">AUD</option>
               <option value="CAD">CAD</option>
@@ -514,302 +808,297 @@ export default function HomeClient({
             </select>
 
             <button
-              onClick={() => router.push("/wishlist")}
-              className="text-lg leading-none"
+              type="button"
+              onClick={() =>
+                navigate("/wishlist")
+              }
               aria-label="Wishlist"
+              className="relative"
             >
-              {wishlist.length > 0 ? "♥" : "♡"}
+              <HeartIcon className="w-5 h-5" />
+
+              {wishlist.length > 0 && (
+                <span className="absolute -top-2 -right-2 bg-black text-white rounded-full min-w-4 h-4 px-1 flex items-center justify-center text-[9px]">
+                  {wishlist.length}
+                </span>
+              )}
             </button>
 
             <button
-              onClick={() => router.push("/cart")}
-              className="text-lg leading-none"
+              type="button"
+              onClick={() =>
+                navigate("/cart")
+              }
               aria-label="Cart"
             >
-              🛒
+              <ShoppingBagIcon className="w-5 h-5" />
             </button>
 
             <button
-              onClick={() => router.push("/orders")}
-              className="text-lg leading-none"
+              type="button"
+              onClick={() =>
+                navigate("/orders")
+              }
               aria-label="Orders"
+              className="text-xs font-semibold"
             >
-              📦
+              Orders
             </button>
           </div>
         </div>
 
-        <div className="px-3 pb-2">
-          <div className="flex items-center w-full bg-white border border-gray-300 rounded-full px-3 py-1.5">
-            <span className="text-gray-400 mr-1 text-xs">
-              🔍
-            </span>
+        <div className="px-3 md:px-5 pb-3">
+          <div className="flex items-center gap-2 w-full border border-gray-200 bg-gray-50 rounded-full px-4 py-2">
+            <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
 
             <input
-              type="text"
-              placeholder="Search Zodiac Merch..."
-              className="flex-1 bg-transparent outline-none text-gray-900 placeholder:text-gray-400 text-sm"
+              type="search"
+              placeholder="Search zodiac merch..."
               value={searchTerm}
-              onChange={(e) =>
-                setSearchTerm(e.target.value)
+              onChange={(event) =>
+                setSearchTerm(
+                  event.target.value
+                )
               }
+              className="flex-1 min-w-0 bg-transparent outline-none text-sm placeholder:text-gray-400"
             />
           </div>
         </div>
       </header>
 
-      {/* Mobile sidebar */}
+      {/* MOBILE SIDEBAR */}
       {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/40"
-          onClick={() => setMobileMenuOpen(false)}
-        >
-          <div
-            className="bg-white w-56 h-full p-3 overflow-y-auto flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() =>
-                setMobileMenuOpen(false)
-              }
-              className="mb-3 bg-black text-white px-3 py-1 rounded text-xs w-fit"
-            >
-              ✕ Close
-            </button>
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close menu overlay"
+            onClick={() =>
+              setMobileMenuOpen(false)
+            }
+            className="absolute inset-0 bg-black/50"
+          />
 
-            <p className="text-xs text-gray-400 uppercase tracking-widest mb-2 px-2">
-              Categories
-            </p>
-
-            <ul className="space-y-0.5">
-              {categories.map((cat) => (
-                <li key={cat.name}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCategory(cat.name);
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`w-full text-left cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded transition-all ${
-                      selectedCategory === cat.name
-                        ? "bg-black text-white"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    {cat.icon}
-                    <span>{cat.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-
-            <div className="border-t border-gray-100 mt-4 pt-3">
-              <p className="text-xs text-gray-400 uppercase tracking-widest mb-2 px-2">
-                Info
+          <aside className="relative z-10 w-[280px] max-w-[85vw] h-full bg-white shadow-xl flex flex-col">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
+              <p className="text-sm font-bold">
+                Zodiac Categories
               </p>
 
-              <ul className="space-y-0.5">
-                {infoLinks.map((item) => (
-                  <li key={item.path}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        router.push(item.path);
-                        setMobileMenuOpen(false);
-                      }}
-                      className="w-full text-left cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded text-gray-600 hover:bg-gray-100"
-                    >
-                      <span>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <button
+                type="button"
+                onClick={() =>
+                  setMobileMenuOpen(false)
+                }
+                aria-label="Close menu"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
             </div>
 
-            <NewsletterBox />
-          </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              <SidebarContent
+                selectedCategory={
+                  selectedCategory
+                }
+                onSelectCategory={
+                  selectCategory
+                }
+                onNavigate={navigate}
+              />
+            </div>
+          </aside>
         </div>
       )}
 
-      <div className="flex">
-        {/* Desktop sidebar */}
+      <div className="flex min-h-screen">
+        {/* DESKTOP SIDEBAR */}
         <aside
-          className={`hidden md:block bg-white border-r border-gray-200 p-4 transition-all duration-300 flex-shrink-0 ${
-            sidebarOpen ? "w-56" : "w-14"
+          className={`hidden md:block shrink-0 bg-white border-r border-gray-200 transition-all duration-200 ${
+            sidebarOpen
+              ? "w-60"
+              : "w-14"
           }`}
         >
-          <button
-            onClick={() =>
-              setSidebarOpen(!sidebarOpen)
-            }
-            className="mb-4 bg-black text-white px-2 py-1 rounded text-sm"
-          >
-            {sidebarOpen ? "←" : "☰"}
-          </button>
-
-          {sidebarOpen && (
-            <>
-              <p className="text-xs text-gray-400 uppercase tracking-widest mb-2 px-2">
-                Categories
-              </p>
-
-              <ul className="space-y-0.5">
-                {categories.map((cat) => (
-                  <li key={cat.name}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedCategory(cat.name)
-                      }
-                      className={`w-full text-left cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded transition-all ${
-                        selectedCategory === cat.name
-                          ? "bg-black text-white"
-                          : "text-gray-700 hover:bg-gray-100"
-                      }`}
-                    >
-                      {cat.icon}
-                      <span>{cat.name}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="border-t border-gray-100 mt-4 pt-3">
-                <p className="text-xs text-gray-400 uppercase tracking-widest mb-2 px-2">
-                  Info
-                </p>
-
-                <ul className="space-y-0.5">
-                  {infoLinks.map((item) => (
-                    <li key={item.path}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          router.push(item.path)
-                        }
-                        className="w-full text-left cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded text-gray-600 hover:bg-gray-100"
-                      >
-                        <span>{item.icon}</span>
-                        <span>{item.label}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <NewsletterBox />
-            </>
-          )}
-        </aside>
-
-        {/* Products */}
-        <div className="flex-1 w-full min-w-0">
-          <section className="p-3">
-            <h2 className="text-lg font-extrabold mb-1 text-gray-900">
-              {selectedCategory === "Home"
-                ? "Fresh Picks for You"
-                : selectedCategory}
-            </h2>
-
-            <p className="mb-3 text-xs text-gray-600">
-              Discover Zodiac Merch: premium T-shirts,
-              hoodies, sweatshirts and more, shipped
-              worldwide.
-            </p>
-
-            {filteredProducts.length === 0 && (
-              <p className="py-8 text-sm text-gray-500">
-                No products found in this category.
-              </p>
-            )}
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {visibleProducts.map((p) => (
-                <div
-                  key={p.id}
-                  className="group border border-gray-200 p-2 rounded-lg bg-white transition duration-200 hover:shadow-md hover:border-black cursor-pointer relative"
-                  onClick={() =>
-                    openProductPage(p.id)
-                  }
-                >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleWishlist(p.id);
-                    }}
-                    className="absolute top-1.5 right-1.5 p-1 rounded-full bg-white/90 shadow-sm z-10"
-                    aria-label="Toggle wishlist"
-                  >
-                    <span className="text-gray-900 text-xs">
-                      {isInWishlist(p.id) ? "♥" : "♡"}
-                    </span>
-                  </button>
-
-                  <div className="mb-1.5 rounded border border-gray-100 overflow-hidden w-full h-28 bg-white relative">
-                    <Image
-                      src={p.image}
-                      alt={`${p.name} by Zodiac Datn Shop`}
-                      fill
-                      className="object-contain"
-                      sizes="(max-width: 768px) 50vw, 25vw"
-                    />
-                  </div>
-
-                  <h3 className="font-semibold text-xs text-gray-900 line-clamp-2 min-h-[2rem]">
-                    {p.name}
-                  </h3>
-
-                  <p className="text-gray-800 font-bold text-sm mt-0.5">
-                    {format(p.price)}
-                  </p>
-
-                  <p className="text-xs text-gray-400">
-                    ⭐ {p.rating} · {p.reviews}
-                  </p>
-
-                  <div className="flex gap-1 mt-1">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAddToCart(p);
-                      }}
-                      className="flex-1 bg-black text-white py-0.5 px-0.5 rounded text-[9px] font-semibold md:py-1.5 md:px-2 md:text-xs"
-                    >
-                      Add to Cart
-                    </button>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openProductPage(p.id);
-                      }}
-                      className="flex-1 bg-black text-white py-0.5 px-0.5 rounded text-[9px] font-semibold md:py-1.5 md:px-2 md:text-xs"
-                    >
-                      Order Now
-                    </button>
-                  </div>
-                </div>
-              ))}
+          <div className="sticky top-[105px] max-h-[calc(100vh-105px)] overflow-y-auto">
+            <div className="p-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setSidebarOpen(
+                    !sidebarOpen
+                  )
+                }
+                aria-label="Toggle sidebar"
+                className="flex items-center justify-center w-8 h-8 bg-black text-white rounded-md"
+              >
+                {sidebarOpen ? (
+                  <ChevronLeftIcon className="w-4 h-4" />
+                ) : (
+                  <Bars3Icon className="w-4 h-4" />
+                )}
+              </button>
             </div>
 
-            {/* Infinite scroll trigger */}
-            {visibleCount < filteredProducts.length && (
+            {sidebarOpen && (
+              <div className="px-3 pb-5">
+                <SidebarContent
+                  selectedCategory={
+                    selectedCategory
+                  }
+                  onSelectCategory={
+                    selectCategory
+                  }
+                  onNavigate={navigate}
+                />
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* PRODUCT CATALOG */}
+        <div className="flex-1 min-w-0">
+          <section className="p-3 md:p-6">
+            <div className="mb-5">
+              <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-gray-500 mb-1">
+                Your Sign. Your Style.
+              </p>
+
+              <h2 className="text-xl md:text-3xl font-extrabold text-gray-900">
+                {selectedCategory ===
+                "All Signs"
+                  ? "Shop All Zodiac Signs"
+                  : selectedCategory ===
+                    "Other Zodiac Merch"
+                  ? "Other Zodiac Merch"
+                  : `${
+                      zodiacCategories.find(
+                        (category) =>
+                          category.name ===
+                          selectedCategory
+                      )?.symbol ?? ""
+                    } ${selectedCategory} Collection`}
+              </h2>
+
+              <p className="text-xs md:text-sm text-gray-500 mt-2">
+                Discover zodiac inspired
+                fashion, gifts and everyday
+                essentials.
+              </p>
+
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-xs text-gray-500">
+                  {loading &&
+                  allProducts.length === 0
+                    ? "Loading products..."
+                    : `${filteredProducts.length} products`}
+                </p>
+
+                {selectedCategory !==
+                  "All Signs" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      selectCategory(
+                        "All Signs"
+                      )
+                    }
+                    className="text-xs font-semibold underline underline-offset-4"
+                  >
+                    View All Signs
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* PRODUCT GRID */}
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
+              {visibleProducts.map(
+                (product, index) =>
+                  renderProductCard(
+                    product,
+                    index
+                  )
+              )}
+            </div>
+
+            {/* INITIAL LOADING */}
+            {loading &&
+              allProducts.length === 0 && (
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-4">
+                  {Array.from({
+                    length: 8,
+                  }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="bg-white border border-gray-200 rounded-xl p-2 animate-pulse"
+                    >
+                      <div className="aspect-square bg-gray-100 rounded-lg" />
+                      <div className="h-3 bg-gray-100 rounded mt-3" />
+                      <div className="h-3 w-2/3 bg-gray-100 rounded mt-2" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+            {/* EMPTY STATE */}
+            {!loading &&
+              filteredProducts.length === 0 && (
+                <div className="py-16 text-center">
+                  <p className="text-lg font-semibold text-gray-900">
+                    No products found
+                  </p>
+
+                  <p className="text-sm text-gray-500 mt-2">
+                    Try another zodiac sign
+                    or search term.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm("");
+                      selectCategory(
+                        "All Signs"
+                      );
+                    }}
+                    className="mt-5 bg-black text-white rounded-lg px-5 py-2 text-xs font-semibold"
+                  >
+                    Shop All Signs
+                  </button>
+                </div>
+              )}
+
+            {/* INFINITE SCROLL */}
+            {hasMore && (
               <div
                 ref={loadMoreRef}
-                className="py-6 text-center text-xs text-gray-500"
-                aria-live="polite"
+                className="py-8 text-center"
               >
-                Loading more products...
+                <div className="inline-flex items-center gap-2 text-xs text-gray-500">
+                  <span className="w-4 h-4 border-2 border-gray-200 border-t-black rounded-full animate-spin" />
+                  Loading more products...
+                </div>
               </div>
             )}
 
+            {/* PRODUCT COUNT */}
             {!loading &&
               filteredProducts.length > 0 && (
-                <p className="py-3 text-center text-xs text-gray-500">
-                  Showing {visibleProducts.length} of{" "}
-                  {filteredProducts.length} products
-                </p>
+                <div className="text-center py-5">
+                  <p className="text-xs text-gray-500">
+                    Showing{" "}
+                    {visibleProducts.length} of{" "}
+                    {filteredProducts.length}{" "}
+                    products
+                  </p>
+
+                  {!hasMore && (
+                    <p className="text-xs text-gray-400 mt-2">
+                      You've reached the end
+                      of this collection.
+                    </p>
+                  )}
+                </div>
               )}
           </section>
         </div>
