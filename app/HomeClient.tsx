@@ -36,7 +36,7 @@ const ZODIAC_SIGNS = [
 ] as const;
 
 type ZodiacSign = (typeof ZODIAC_SIGNS)[number];
-type CategoryName = "Home" | ZodiacSign;
+type CategoryName = "Home" | ZodiacSign | "Other";
 
 const ZODIAC_SYMBOLS: Record<ZodiacSign, string> = {
   Aries: "♈",
@@ -534,7 +534,6 @@ export default function HomeClient({
           break;
         }
 
-        // Prevent infinite loops if the API ignores page.
         const pageSignature = rawProducts
           .map((product) => String(product.id))
           .join("|");
@@ -564,8 +563,6 @@ export default function HomeClient({
           );
         }
 
-        // Update counts and products after each page.
-        // Do not wait for the entire inventory to finish.
         if (requestId !== requestIdRef.current) {
           return;
         }
@@ -654,12 +651,12 @@ export default function HomeClient({
   }, [loadAllProducts]);
 
   /* =======================================================
-     CATEGORY COUNTS
+     CATEGORY COUNTS INCLUDING OTHER
   ======================================================= */
 
   const categoryCounts = useMemo(() => {
     const counts = {} as Record<
-      ZodiacSign,
+      ZodiacSign | "Other",
       number
     >;
 
@@ -667,9 +664,15 @@ export default function HomeClient({
       counts[sign] = 0;
     }
 
+    counts.Other = 0;
+
     for (const product of products) {
-      for (const sign of product.signs) {
-        counts[sign] += 1;
+      if (product.signs.length === 0) {
+        counts.Other += 1;
+      } else {
+        for (const sign of product.signs) {
+          counts[sign] += 1;
+        }
       }
     }
 
@@ -677,7 +680,7 @@ export default function HomeClient({
   }, [products]);
 
   /* =======================================================
-     FILTERING
+     FILTERING INCLUDING OTHER
   ======================================================= */
 
   const filteredProducts = useMemo(() => {
@@ -686,11 +689,17 @@ export default function HomeClient({
       .toLowerCase();
 
     return products.filter((product) => {
-      const categoryMatches =
-        selectedCategory === "Home" ||
-        product.signs.includes(
+      let categoryMatches = false;
+
+      if (selectedCategory === "Home") {
+        categoryMatches = true;
+      } else if (selectedCategory === "Other") {
+        categoryMatches = product.signs.length === 0;
+      } else {
+        categoryMatches = product.signs.includes(
           selectedCategory
         );
+      }
 
       const searchMatches =
         !query ||
@@ -699,6 +708,9 @@ export default function HomeClient({
           stripHtml(product.description),
           ...product.tags,
           ...product.signs,
+          ...(product.signs.length === 0
+            ? ["Other"]
+            : []),
         ]
           .join(" ")
           .toLowerCase()
@@ -812,7 +824,7 @@ export default function HomeClient({
   }
 
   /* =======================================================
-     NAVIGATION
+     NAVIGATION INCLUDING OTHER
   ======================================================= */
 
   const categoryNavigation = (
@@ -857,6 +869,25 @@ export default function HomeClient({
           </span>
         </button>
       ))}
+
+      {/* OTHER CATEGORY */}
+      <button
+        type="button"
+        onClick={() =>
+          selectCategory("Other")
+        }
+        className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${
+          selectedCategory === "Other"
+            ? "bg-black font-semibold text-white"
+            : "text-gray-700 hover:bg-gray-100"
+        }`}
+      >
+        <span>Other</span>
+
+        <span className="text-xs opacity-60">
+          {categoryCounts.Other}
+        </span>
+      </button>
     </div>
   );
 
@@ -1025,13 +1056,17 @@ export default function HomeClient({
             <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">
               {selectedCategory === "Home"
                 ? "Shop Your Zodiac Sign"
-                : `${ZODIAC_SYMBOLS[selectedCategory]} ${selectedCategory}`}
+                : selectedCategory === "Other"
+                  ? "Other Merchandise"
+                  : `${ZODIAC_SYMBOLS[selectedCategory]} ${selectedCategory}`}
             </h1>
 
             <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-gray-500">
               {selectedCategory === "Home"
                 ? "Discover zodiac inspired fashion for your sign, your energy, and your style."
-                : `${ZODIAC_DATES[selectedCategory]} · Explore merchandise inspired by your zodiac sign.`}
+                : selectedCategory === "Other"
+                  ? "Discover more styles, accessories, and merchandise beyond the zodiac."
+                  : `${ZODIAC_DATES[selectedCategory]} · Explore merchandise inspired by your zodiac sign.`}
             </p>
 
             {selectedCategory !== "Home" && (
@@ -1042,7 +1077,7 @@ export default function HomeClient({
                 }
                 className="mt-5 rounded-full border border-black px-5 py-2 text-xs font-bold"
               >
-                View All Signs
+                View All Products
               </button>
             )}
           </section>
@@ -1078,6 +1113,27 @@ export default function HomeClient({
                       </div>
                     </button>
                   ))}
+
+                  {/* OTHER CATEGORY TILE */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      selectCategory("Other")
+                    }
+                    className="rounded-xl border border-gray-200 bg-white px-2 py-4 text-center transition hover:border-black hover:shadow-sm"
+                  >
+                    <div className="flex h-9 items-center justify-center text-xl font-black">
+                      +
+                    </div>
+
+                    <div className="mt-2 text-xs font-bold">
+                      Other
+                    </div>
+
+                    <div className="mt-1 text-[10px] text-gray-400">
+                      {categoryCounts.Other} products
+                    </div>
+                  </button>
                 </div>
               </div>
             )}
@@ -1187,7 +1243,7 @@ export default function HomeClient({
                   </h3>
 
                   <p className="mt-2 text-sm text-gray-500">
-                    Try another zodiac sign or search term.
+                    Try another category or search term.
                   </p>
 
                   <button
@@ -1246,7 +1302,7 @@ export default function HomeClient({
                   </button>
 
                   <div className="pt-3">
-                    {product.signs.length > 0 && (
+                    {product.signs.length > 0 ? (
                       <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                         {product.signs
                           .map(
@@ -1254,6 +1310,10 @@ export default function HomeClient({
                               `${ZODIAC_SYMBOLS[sign]} ${sign}`
                           )
                           .join(" · ")}
+                      </p>
+                    ) : (
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                        Other
                       </p>
                     )}
 
@@ -1333,7 +1393,7 @@ export default function HomeClient({
         </h2>
 
         <p className="mt-2 text-xs text-gray-500">
-          Rep Your Zodiac Sign. 
+          Rep Your Zodiac Sign.
         </p>
 
         <div className="mt-5 flex flex-wrap justify-center gap-4 text-xs text-gray-600">
