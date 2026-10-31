@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useCart } from "./CartContext";
@@ -45,7 +45,7 @@ type UiProduct = {
   name: string;
   price: number;
   category: CategoryName;
-  variantId?: number | null;
+  variantId: number | null;
   rating: number;
   reviews: number;
   image: string;
@@ -56,50 +56,89 @@ type Props = {
   initialProducts?: UiProduct[];
 };
 
+const PAGE_SIZE = 12;
+
 const categories: Category[] = [
   { name: "Home", icon: <HomeIcon className="h-4 w-4" /> },
   { name: "T-shirts", icon: <RectangleGroupIcon className="h-4 w-4" /> },
   { name: "Hoodies", icon: <Squares2X2Icon className="h-4 w-4" /> },
   { name: "Sweatshirts", icon: <Squares2X2Icon className="h-4 w-4" /> },
   { name: "Tank Tops", icon: <BoltIcon className="h-4 w-4" /> },
-  { name: "Long Sleeve Shirts", icon: <RectangleGroupIcon className="h-4 w-4" /> },
-  { name: "Polo Shirts", icon: <RectangleGroupIcon className="h-4 w-4" /> },
+  {
+    name: "Long Sleeve Shirts",
+    icon: <RectangleGroupIcon className="h-4 w-4" />,
+  },
+  {
+    name: "Polo Shirts",
+    icon: <RectangleGroupIcon className="h-4 w-4" />,
+  },
   { name: "Leggings", icon: <Bars3Icon className="h-4 w-4" /> },
   { name: "Shorts", icon: <Bars3Icon className="h-4 w-4" /> },
-  { name: "Dresses & Skirts", icon: <SparklesIcon className="h-4 w-4" /> },
-  { name: "Kids & Baby Clothing", icon: <UserIcon className="h-4 w-4" /> },
-  { name: "Tote Bags", icon: <RectangleGroupIcon className="h-4 w-4" /> },
+  {
+    name: "Dresses & Skirts",
+    icon: <SparklesIcon className="h-4 w-4" />,
+  },
+  {
+    name: "Kids & Baby Clothing",
+    icon: <UserIcon className="h-4 w-4" />,
+  },
+  {
+    name: "Tote Bags",
+    icon: <RectangleGroupIcon className="h-4 w-4" />,
+  },
   { name: "Candles", icon: <SparklesIcon className="h-4 w-4" /> },
-  { name: "Stickers", icon: <Squares2X2Icon className="h-4 w-4" /> },
-  { name: "Accessories", icon: <SparklesIcon className="h-4 w-4" /> },
-  { name: "Other Products", icon: <Squares2X2Icon className="h-4 w-4" /> },
+  {
+    name: "Stickers",
+    icon: <Squares2X2Icon className="h-4 w-4" />,
+  },
+  {
+    name: "Accessories",
+    icon: <SparklesIcon className="h-4 w-4" />,
+  },
+  {
+    name: "Other Products",
+    icon: <Squares2X2Icon className="h-4 w-4" />,
+  },
 ];
 
 const infoLinks = [
   { label: "About Zodiac Datn Shop", path: "/about", icon: "ℹ️" },
   { label: "Blog", path: "/blog", icon: "✍️" },
   { label: "Contact Us", path: "/contact", icon: "📧" },
-  { label: "Shipping Policy", path: "/shipping-policy", icon: "🚚" },
-  { label: "Refund Policy", path: "/refund-policy", icon: "↩️" },
-  { label: "Privacy Policy", path: "/privacy-policy", icon: "🔒" },
-  { label: "Terms of Service", path: "/terms", icon: "📄" },
+  {
+    label: "Shipping Policy",
+    path: "/shipping-policy",
+    icon: "🚚",
+  },
+  {
+    label: "Refund Policy",
+    path: "/refund-policy",
+    icon: "↩️",
+  },
+  {
+    label: "Privacy Policy",
+    path: "/privacy-policy",
+    icon: "🔒",
+  },
+  {
+    label: "Terms of Service",
+    path: "/terms",
+    icon: "📄",
+  },
 ];
 
 function deriveCategory(
   title: string,
   tags: string[] | undefined
 ): CategoryName {
-  const lowerTitle = title.toLowerCase();
-  const lowerTags = (tags ?? []).map((tag) =>
+  const normalizedTitle = title.toLowerCase();
+  const normalizedTags = (tags ?? []).map((tag) =>
     String(tag).toLowerCase()
   );
 
   const matches = (pattern: RegExp) =>
-    pattern.test(lowerTitle) ||
-    lowerTags.some((tag) => pattern.test(tag));
-
-  // Printify categories
-  // Check specific product types before general clothing.
+    pattern.test(normalizedTitle) ||
+    normalizedTags.some((tag) => pattern.test(tag));
 
   if (matches(/\b(tote|canvas bag|shopping bag)\b/))
     return "Tote Bags";
@@ -110,7 +149,7 @@ function deriveCategory(
   if (matches(/\b(sticker|kiss.cut|die.cut|decal)\b/))
     return "Stickers";
 
-  if (matches(/\b(hoodie|hooded)\b/))
+  if (matches(/\b(hoodie|hooded|pullover hoodie)\b/))
     return "Hoodies";
 
   if (matches(/\b(sweatshirt|crewneck|sweater)\b/))
@@ -119,16 +158,16 @@ function deriveCategory(
   if (matches(/\b(tank top|tanktop|sleeveless)\b/))
     return "Tank Tops";
 
-  if (matches(/\blong.sleeve\b/))
+  if (matches(/\b(long.sleeve)\b/))
     return "Long Sleeve Shirts";
 
-  if (matches(/\bpolo\b/))
+  if (matches(/\b(polo)\b/))
     return "Polo Shirts";
 
-  if (matches(/\blegging(s)?\b/))
+  if (matches(/\b(legging|leggings)\b/))
     return "Leggings";
 
-  if (matches(/\bshorts\b/))
+  if (matches(/\b(shorts)\b/))
     return "Shorts";
 
   if (matches(/\b(dress|skirt)\b/))
@@ -205,9 +244,7 @@ function NewsletterBox() {
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
-            if (status !== "idle") {
-              setStatus("idle");
-            }
+            if (status !== "idle") setStatus("idle");
           }}
           placeholder="your@email.com"
           disabled={status === "loading"}
@@ -215,7 +252,6 @@ function NewsletterBox() {
         />
 
         <button
-          type="button"
           onClick={handleSubscribe}
           disabled={status === "loading"}
           className="w-full bg-black text-white py-1.5 rounded text-xs font-semibold hover:bg-gray-900 transition-colors disabled:opacity-50"
@@ -242,15 +278,19 @@ function NewsletterBox() {
 export default function HomeClient({
   initialProducts,
 }: Props) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [selectedCategory, setSelectedCategory] =
     useState<CategoryName>("Home");
 
   const [searchTerm, setSearchTerm] = useState("");
-
   const [mobileMenuOpen, setMobileMenuOpen] =
     useState(false);
+
+  const [visibleCount, setVisibleCount] =
+    useState(PAGE_SIZE);
+
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const router = useRouter();
 
@@ -261,18 +301,13 @@ export default function HomeClient({
     wishlist,
   } = useCart();
 
-  const {
-    currency,
-    setCurrency,
-    format,
-  } = useCurrency();
+  const { currency, setCurrency, format } = useCurrency();
 
   const {
     products: rawProducts,
     loading,
   } = useProducts();
 
-  // Convert Printify products into storefront products.
   const allProducts: UiProduct[] = useMemo(() => {
     if (rawProducts.length > 0) {
       return rawProducts.map((p) => {
@@ -285,12 +320,12 @@ export default function HomeClient({
 
         const firstVariant =
           p.variants?.find(
-            (v: any) =>
+            (v) =>
               v.is_default &&
               v.is_enabled !== false
           ) ??
           p.variants?.find(
-            (v: any) => v.is_enabled !== false
+            (v) => v.is_enabled !== false
           ) ??
           null;
 
@@ -301,10 +336,7 @@ export default function HomeClient({
             ? firstVariant.price / 100
             : 0,
           variantId: firstVariant?.id ?? null,
-          category: deriveCategory(
-            p.title,
-            p.tags
-          ),
+          category: deriveCategory(p.title, p.tags),
           rating: 4.5,
           reviews: 128,
           image: mainImage,
@@ -316,14 +348,11 @@ export default function HomeClient({
     return initialProducts ?? [];
   }, [rawProducts, initialProducts]);
 
-  // Filter products when sidebar category is selected.
   const filteredProducts = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-
     return allProducts.filter((p) => {
       const matchesSearch = p.name
         .toLowerCase()
-        .includes(query);
+        .includes(searchTerm.toLowerCase());
 
       const matchesCategory =
         selectedCategory === "Home" ||
@@ -331,17 +360,50 @@ export default function HomeClient({
 
       return matchesSearch && matchesCategory;
     });
-  }, [
-    allProducts,
-    searchTerm,
-    selectedCategory,
-  ]);
+  }, [allProducts, searchTerm, selectedCategory]);
 
-  // Shared handler for mobile and desktop sidebar.
-  const selectCategory = (name: CategoryName) => {
-    setSelectedCategory(name);
-    setMobileMenuOpen(false);
-  };
+  // Reset pagination when the category or search changes.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [searchTerm, selectedCategory]);
+
+  const visibleProducts = useMemo(
+    () => filteredProducts.slice(0, visibleCount),
+    [filteredProducts, visibleCount]
+  );
+
+  // Load 12 more products when the customer scrolls down.
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+
+    if (
+      !sentinel ||
+      visibleCount >= filteredProducts.length
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((count) =>
+            Math.min(
+              count + PAGE_SIZE,
+              filteredProducts.length
+            )
+          );
+        }
+      },
+      {
+        rootMargin: "400px 0px",
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => observer.disconnect();
+  }, [visibleCount, filteredProducts.length]);
 
   const openProductPage = (id: string) => {
     router.push(`/product/${id}`);
@@ -362,7 +424,6 @@ export default function HomeClient({
     });
   };
 
-  // Loading skeleton
   if (loading && allProducts.length === 0) {
     return (
       <main className="min-h-screen bg-gray-50 text-black">
@@ -374,38 +435,39 @@ export default function HomeClient({
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="w-16 h-7 bg-gray-200 rounded animate-pulse" />
-              <div className="w-7 h-7 bg-gray-200 rounded-full animate-pulse" />
-              <div className="w-7 h-7 bg-gray-200 rounded-full animate-pulse" />
+              <div className="w-10 h-5 bg-gray-200 rounded animate-pulse" />
+              <div className="w-5 h-5 bg-gray-200 rounded animate-pulse" />
+              <div className="w-5 h-5 bg-gray-200 rounded animate-pulse" />
             </div>
           </div>
 
           <div className="px-3 pb-2">
-            <div className="w-full h-8 bg-gray-200 rounded-full animate-pulse" />
+            <div className="h-8 bg-gray-200 rounded-full animate-pulse" />
           </div>
         </header>
 
-        <div className="p-3">
-          <div className="w-40 h-5 bg-gray-200 rounded animate-pulse mb-2" />
-          <div className="w-64 h-3 bg-gray-100 rounded animate-pulse mb-4" />
+        <div className="flex">
+          <aside className="hidden md:block w-14 bg-white border-r border-gray-200 p-4">
+            <div className="w-6 h-6 bg-gray-200 rounded animate-pulse" />
+          </aside>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {[...Array(8)].map((_, i) => (
-              <div
-                key={i}
-                className="border border-gray-100 p-2 rounded-lg bg-white animate-pulse"
-              >
-                <div className="w-full h-28 bg-gray-200 rounded mb-2" />
-                <div className="h-3 bg-gray-200 rounded w-3/4 mb-1" />
-                <div className="h-3 bg-gray-200 rounded w-1/2 mb-2" />
-                <div className="h-3 bg-gray-200 rounded w-1/4 mb-2" />
+          <div className="flex-1 p-3">
+            <div className="h-6 w-40 bg-gray-200 rounded animate-pulse mb-2" />
+            <div className="h-3 w-64 bg-gray-200 rounded animate-pulse mb-4" />
 
-                <div className="flex gap-1">
-                  <div className="flex-1 h-7 bg-gray-200 rounded" />
-                  <div className="flex-1 h-7 bg-gray-200 rounded" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="bg-white border border-gray-200 rounded-lg p-2"
+                >
+                  <div className="h-28 bg-gray-200 rounded animate-pulse mb-2" />
+                  <div className="h-3 bg-gray-200 rounded animate-pulse mb-1" />
+                  <div className="h-3 w-2/3 bg-gray-200 rounded animate-pulse mb-2" />
+                  <div className="h-5 bg-gray-200 rounded animate-pulse" />
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </main>
@@ -414,20 +476,16 @@ export default function HomeClient({
 
   return (
     <main className="min-h-screen bg-gray-50 text-black">
-
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40 w-full">
         <div className="flex items-center justify-between px-3 py-2">
-
           <div className="flex items-center gap-2">
             <button
-              type="button"
               onClick={() =>
-                setMobileMenuOpen((open) => !open)
+                setMobileMenuOpen(!mobileMenuOpen)
               }
               className="p-1 rounded bg-black text-white text-xs"
-              aria-label="Open categories menu"
-              aria-expanded={mobileMenuOpen}
+              aria-label="Open menu"
             >
               ☰
             </button>
@@ -456,10 +514,7 @@ export default function HomeClient({
             </select>
 
             <button
-              type="button"
-              onClick={() =>
-                router.push("/wishlist")
-              }
+              onClick={() => router.push("/wishlist")}
               className="text-lg leading-none"
               aria-label="Wishlist"
             >
@@ -467,10 +522,7 @@ export default function HomeClient({
             </button>
 
             <button
-              type="button"
-              onClick={() =>
-                router.push("/cart")
-              }
+              onClick={() => router.push("/cart")}
               className="text-lg leading-none"
               aria-label="Cart"
             >
@@ -478,10 +530,7 @@ export default function HomeClient({
             </button>
 
             <button
-              type="button"
-              onClick={() =>
-                router.push("/orders")
-              }
+              onClick={() => router.push("/orders")}
               className="text-lg leading-none"
               aria-label="Orders"
             >
@@ -509,22 +558,17 @@ export default function HomeClient({
         </div>
       </header>
 
-      {/* Mobile drawer */}
+      {/* Mobile sidebar */}
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 z-50 bg-black/40"
-          onClick={() =>
-            setMobileMenuOpen(false)
-          }
+          onClick={() => setMobileMenuOpen(false)}
         >
           <div
             className="bg-white w-56 h-full p-3 overflow-y-auto flex flex-col"
-            onClick={(e) =>
-              e.stopPropagation()
-            }
+            onClick={(e) => e.stopPropagation()}
           >
             <button
-              type="button"
               onClick={() =>
                 setMobileMenuOpen(false)
               }
@@ -542,15 +586,11 @@ export default function HomeClient({
                 <li key={cat.name}>
                   <button
                     type="button"
-                    onClick={() =>
-                      selectCategory(cat.name)
-                    }
-                    aria-current={
-                      selectedCategory === cat.name
-                        ? "page"
-                        : undefined
-                    }
-                    className={`w-full cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded transition-all text-left ${
+                    onClick={() => {
+                      setSelectedCategory(cat.name);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full text-left cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded transition-all ${
                       selectedCategory === cat.name
                         ? "bg-black text-white"
                         : "text-gray-700 hover:bg-gray-100"
@@ -577,7 +617,7 @@ export default function HomeClient({
                         router.push(item.path);
                         setMobileMenuOpen(false);
                       }}
-                      className="w-full cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded text-gray-600 hover:bg-gray-100 text-left"
+                      className="w-full text-left cursor-pointer text-xs font-medium flex items-center gap-2 py-1.5 px-2 rounded text-gray-600 hover:bg-gray-100"
                     >
                       <span>{item.icon}</span>
                       <span>{item.label}</span>
@@ -593,7 +633,6 @@ export default function HomeClient({
       )}
 
       <div className="flex">
-
         {/* Desktop sidebar */}
         <aside
           className={`hidden md:block bg-white border-r border-gray-200 p-4 transition-all duration-300 flex-shrink-0 ${
@@ -601,17 +640,10 @@ export default function HomeClient({
           }`}
         >
           <button
-            type="button"
             onClick={() =>
-              setSidebarOpen((open) => !open)
+              setSidebarOpen(!sidebarOpen)
             }
             className="mb-4 bg-black text-white px-2 py-1 rounded text-sm"
-            aria-label={
-              sidebarOpen
-                ? "Collapse sidebar"
-                : "Expand sidebar"
-            }
-            aria-expanded={sidebarOpen}
           >
             {sidebarOpen ? "←" : "☰"}
           </button>
@@ -628,14 +660,9 @@ export default function HomeClient({
                     <button
                       type="button"
                       onClick={() =>
-                        selectCategory(cat.name)
+                        setSelectedCategory(cat.name)
                       }
-                      aria-current={
-                        selectedCategory === cat.name
-                          ? "page"
-                          : undefined
-                      }
-                      className={`w-full cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded transition-all text-left ${
+                      className={`w-full text-left cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded transition-all ${
                         selectedCategory === cat.name
                           ? "bg-black text-white"
                           : "text-gray-700 hover:bg-gray-100"
@@ -661,7 +688,7 @@ export default function HomeClient({
                         onClick={() =>
                           router.push(item.path)
                         }
-                        className="w-full cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded text-gray-600 hover:bg-gray-100 text-left"
+                        className="w-full text-left cursor-pointer text-sm font-medium flex items-center gap-2 px-2 py-1.5 rounded text-gray-600 hover:bg-gray-100"
                       >
                         <span>{item.icon}</span>
                         <span>{item.label}</span>
@@ -676,7 +703,7 @@ export default function HomeClient({
           )}
         </aside>
 
-        {/* Main content */}
+        {/* Products */}
         <div className="flex-1 w-full min-w-0">
           <section className="p-3">
             <h2 className="text-lg font-extrabold mb-1 text-gray-900">
@@ -698,7 +725,7 @@ export default function HomeClient({
             )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {filteredProducts.map((p) => (
+              {visibleProducts.map((p) => (
                 <div
                   key={p.id}
                   className="group border border-gray-200 p-2 rounded-lg bg-white transition duration-200 hover:shadow-md hover:border-black cursor-pointer relative"
@@ -707,7 +734,6 @@ export default function HomeClient({
                   }
                 >
                   <button
-                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleWishlist(p.id);
@@ -744,7 +770,6 @@ export default function HomeClient({
 
                   <div className="flex gap-1 mt-1">
                     <button
-                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleAddToCart(p);
@@ -755,7 +780,6 @@ export default function HomeClient({
                     </button>
 
                     <button
-                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         openProductPage(p.id);
@@ -768,6 +792,25 @@ export default function HomeClient({
                 </div>
               ))}
             </div>
+
+            {/* Infinite scroll trigger */}
+            {visibleCount < filteredProducts.length && (
+              <div
+                ref={loadMoreRef}
+                className="py-6 text-center text-xs text-gray-500"
+                aria-live="polite"
+              >
+                Loading more products...
+              </div>
+            )}
+
+            {!loading &&
+              filteredProducts.length > 0 && (
+                <p className="py-3 text-center text-xs text-gray-500">
+                  Showing {visibleProducts.length} of{" "}
+                  {filteredProducts.length} products
+                </p>
+              )}
           </section>
         </div>
       </div>
