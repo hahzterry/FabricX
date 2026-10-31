@@ -1,43 +1,32 @@
 
-
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const BASE =
+const PRINTIFY_API_TOKEN = process.env.PRINTIFY_API_TOKEN;
+const PRINTIFY_SHOP_ID = process.env.PRINTIFY_SHOP_ID;
+const PRINTIFY_BASE_URL =
   process.env.PRINTIFY_BASE_URL ||
   "https://api.printify.com/v1";
 
 const CACHE_SECONDS = 300;
 
-type Product = {
+type PrintifyListItem = {
   id: string;
   title: string;
-  visible?: boolean;
-  tags?: string[];
-  images?: unknown[];
-  variants?: unknown[];
-  options?: unknown[];
 };
 
-type PageResponse = {
-  data: Product[];
+type PrintifyListResponse = {
   current_page: number;
-  last_page: number;
+  last_page?: number;
+  data: PrintifyListItem[];
 };
 
-async function getPage(
-  shopId: string,
-  token: string,
-  page: number
-): Promise<PageResponse> {
-  const url =
-    `${BASE}/shops/${shopId}/products.json` +
-    `?limit=50&page=${page}`;
-
+async function printifyFetch(url: string) {
   const response = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${PRINTIFY_API_TOKEN}`,
+      "Content-Type": "application/json",
     },
     next: {
       revalidate: CACHE_SECONDS,
@@ -45,8 +34,10 @@ async function getPage(
   });
 
   if (!response.ok) {
+    const error = await response.text();
+
     throw new Error(
-      `Printify request failed: ${response.status}`
+      `Printify ${response.status}: ${error.slice(0, 300)}`
     );
   }
 
@@ -54,23 +45,32 @@ async function getPage(
 }
 
 export async function GET() {
-  const token = process.env.PRINTIFY_API_TOKEN;
-  const shopId = process.env.PRINTIFY_SHOP_ID;
-
-  if (!token || !shopId) {
+  if (!PRINTIFY_API_TOKEN || !PRINTIFY_SHOP_ID) {
     return NextResponse.json(
-      { error: "Printify not configured" },
+      { error: "Printify API not configured" },
       { status: 500 }
     );
   }
 
   try {
-    const first = await getPage(shopId, token, 1);
-    const products = [...(first.data || [])];
+    const listUrl =
+      `${PRINTIFY_BASE_URL}/shops/${PRINTIFY_SHOP_ID}` +
+      `/products.json`;
 
-    const lastPage = Math.max(1, first.last_page || 1);
+    // Fetch first page.
+    const firstPage =
+      (await printifyFetch(
+        `${listUrl}?limit=50&page=1`
+      )) as PrintifyListResponse;
 
-    // Fetch remaining pages in small batches.
+    const allItems = [...(firstPage.data ?? [])];
+
+    const lastPage = Math.max(
+      1,
+      firstPage.last_page ?? 1
+    );
+
+    // Fetch remaining pages.
     for (let page = 2; page <= lastPage; page += 5) {
       const pages = Array.from(
         {
@@ -80,28 +80,81 @@ export async function GET() {
       );
 
       const results = await Promise.all(
-        pages.map((p) => getPage(shopId, token, p))
+        pages.map(
+          (p) =>
+            printifyFetch(
+              `${listUrl}?limit=50&page=${p}`
+            ) as Promise<PrintifyListResponse>
+        )
       );
 
       for (const result of results) {
-        products.push(...(result.data || []));
+        allItems.push(...(result.data ?? []));
       }
     }
 
-    const unique = Array.from(
-      new Map(products.map((p) => [p.id, p])).values()
+    // Remove duplicates.
+    const uniqueItems = Array.from(
+      new Map(
+        allItems.map((item) => [item.id, item])
+      ).values()
     );
 
-    const published = unique.filter(
-      (p) => p.visible !== false
-    );
+    // Fetch full product details in small batches.
+    const fullProducts: any[] = [];
+
+    const BATCH_SIZE = 5;
+
+    for (
+      let i = 0;
+      i < uniqueItems.length;
+      i += BATCH_SIZE
+    ) {
+      const batch = uniqueItems.slice(
+        i,
+        i + BATCH_SIZE
+      );
+
+      const results = await Promise.all(
+        batch.map(async (item) => {
+          const detailUrl =
+            `${listUrl}/${item.id}.json`;
+
+          try {
+            const detail = await printifyFetch(
+              detailUrl
+            );
+
+            if (detail.visible === false) {
+              return null;
+            }
+
+            return detail;
+          } catch (error) {
+            console.error(
+              "Printify detail error:",
+              item.id,
+              error
+            );
+
+            return null;
+          }
+        })
+      );
+
+      fullProducts.push(
+        ...results.filter(
+          (product) => product !== null
+        )
+      );
+    }
 
     return NextResponse.json(
       {
         current_page: 1,
         last_page: lastPage,
-        total: published.length,
-        data: published,
+        total: fullProducts.length,
+        data: fullProducts,
       },
       {
         headers: {
@@ -111,10 +164,15 @@ export async function GET() {
       }
     );
   } catch (error) {
-    console.error("Printify catalog error:", error);
+    console.error(
+      "FabricX Printify products error:",
+      error
+    );
 
     return NextResponse.json(
-      { error: "Unable to load products" },
+      {
+        error: "Unable to load Printify products",
+      },
       { status: 502 }
     );
   }
