@@ -2,23 +2,21 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-
-const PRINTIFY_API_TOKEN = process.env.PRINTIFY_API_TOKEN;
-const PRINTIFY_SHOP_ID = process.env.PRINTIFY_SHOP_ID;
+export const dynamic = "force-dynamic";
 
 const PRINTIFY_BASE_URL = (
   process.env.PRINTIFY_BASE_URL ||
   "https://api.printify.com/v1"
 ).replace(/\/+$/, "");
 
-const CACHE_SECONDS = 300;
-const BATCH_SIZE = 5;
+const PAGE_SIZE = 50;
+const CACHE_SECONDS = 60;
 
 type PrintifyProduct = {
   id: string;
   title: string;
-  visible?: boolean;
   description?: string;
+  visible?: boolean;
   tags?: string[];
   images?: unknown[];
   variants?: unknown[];
@@ -26,74 +24,78 @@ type PrintifyProduct = {
   [key: string]: unknown;
 };
 
-type PrintifyListResponse = {
+type PrintifyResponse = {
   current_page: number;
-  last_page?: number;
+  last_page: number;
+  total: number;
   data: PrintifyProduct[];
 };
 
-async function printifyFetch<T>(
-  url: string
-): Promise<T> {
+async function getPage(
+  shopId: string,
+  token: string,
+  page: number
+): Promise<PrintifyResponse> {
+  const url =
+    `${PRINTIFY_BASE_URL}/shops/${shopId}` +
+    `/products.json?limit=${PAGE_SIZE}&page=${page}`;
+
   const response = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${PRINTIFY_API_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       Accept: "application/json",
     },
-    next: {
-      revalidate: CACHE_SECONDS,
-    },
+    cache: "no-store",
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const error = await response.text();
 
     throw new Error(
-      `Printify ${response.status}: ${message.slice(0, 300)}`
+      `Printify page ${page}: HTTP ${response.status} ${error.slice(0, 200)}`
     );
   }
 
-  return (await response.json()) as T;
+  return response.json();
 }
 
 export async function GET() {
-  if (!PRINTIFY_API_TOKEN || !PRINTIFY_SHOP_ID) {
+  const token = process.env.PRINTIFY_API_TOKEN;
+  const shopId = process.env.PRINTIFY_SHOP_ID;
+
+  if (!token || !shopId) {
     return NextResponse.json(
-      { error: "Printify API not configured" },
+      { error: "Printify credentials missing" },
       { status: 500 }
     );
   }
 
   try {
-    const productsBaseUrl =
-      `${PRINTIFY_BASE_URL}/shops/` +
-      `${PRINTIFY_SHOP_ID}/products`;
+    const first = await getPage(
+      shopId,
+      token,
+      1
+    );
 
-    const listUrl = `${productsBaseUrl}.json`;
-
-    // 1. Retrieve the first page.
-    const firstPage =
-      await printifyFetch<PrintifyListResponse>(
-        `${listUrl}?limit=50&page=1`
-      );
-
-    const allProducts = [...(firstPage.data ?? [])];
+    const allProducts: PrintifyProduct[] = [
+      ...(first.data || []),
+    ];
 
     const lastPage = Math.max(
       1,
-      firstPage.last_page ?? 1
+      Number(first.last_page) || 1
     );
 
-    // 2. Retrieve every remaining page.
+    // Fetch every remaining page in batches of 5.
     for (
       let page = 2;
       page <= lastPage;
-      page += BATCH_SIZE
+      page += 5
     ) {
-      const pages = Array.from(
+      const pageNumbers = Array.from(
         {
           length: Math.min(
-            BATCH_SIZE,
+            5,
             lastPage - page + 1
           ),
         },
@@ -101,19 +103,17 @@ export async function GET() {
       );
 
       const results = await Promise.all(
-        pages.map((p) =>
-          printifyFetch<PrintifyListResponse>(
-            `${listUrl}?limit=50&page=${p}`
-          )
+        pageNumbers.map((number) =>
+          getPage(shopId, token, number)
         )
       );
 
       for (const result of results) {
-        allProducts.push(...(result.data ?? []));
+        allProducts.push(...(result.data || []));
       }
     }
 
-    // 3. Remove duplicate products.
+    // Remove duplicate product IDs.
     const uniqueProducts = Array.from(
       new Map(
         allProducts.map((product) => [
@@ -123,57 +123,20 @@ export async function GET() {
       ).values()
     );
 
-    // 4. Retrieve full product details.
-    const fullProducts: PrintifyProduct[] = [];
-
-    for (
-      let i = 0;
-      i < uniqueProducts.length;
-      i += BATCH_SIZE
-    ) {
-      const batch = uniqueProducts.slice(
-        i,
-        i + BATCH_SIZE
+    // Keep visible products.
+    const publishedProducts =
+      uniqueProducts.filter(
+        (product) =>
+          product.visible !== false
       );
 
-      const details = await Promise.all(
-        batch.map(async (product) => {
-          const detailUrl =
-            `${productsBaseUrl}/${product.id}.json`;
-
-          try {
-            return await printifyFetch<PrintifyProduct>(
-              detailUrl
-            );
-          } catch (error) {
-            console.error(
-              `Failed to load product ${product.id}:`,
-              error
-            );
-
-            // Preserve the product from the list
-            // if its detail request fails.
-            return product;
-          }
-        })
-      );
-
-      fullProducts.push(...details);
-    }
-
-    // 5. Exclude hidden products.
-    const publishedProducts = fullProducts.filter(
-      (product) => product.visible !== false
-    );
-
-    console.log("FabricX catalog loaded:", {
-      pages: lastPage,
-      retrieved: uniqueProducts.length,
-      published: publishedProducts.length,
+    console.log("FabricX Printify sync", {
+      printifyTotal: first.total,
+      pagesFetched: lastPage,
+      productsRetrieved: uniqueProducts.length,
+      productsVisible: publishedProducts.length,
     });
 
-    // 6. Return all products in the format
-    // expected by ProductsContext.tsx.
     return NextResponse.json(
       {
         current_page: 1,
@@ -184,7 +147,7 @@ export async function GET() {
       {
         headers: {
           "Vercel-CDN-Cache-Control":
-            "s-maxage=300, stale-while-revalidate=600",
+            `s-maxage=${CACHE_SECONDS}, stale-while-revalidate=120`,
           "Cache-Control":
             "public, max-age=0",
         },
@@ -198,7 +161,7 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        error: "Unable to load Printify products",
+        error: "Failed to load Printify catalog",
       },
       {
         status: 502,
