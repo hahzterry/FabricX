@@ -13,7 +13,7 @@ import { useCart } from "./CartContext";
 import { useCurrency } from "./CurrencyContext";
 
 /* =========================================================
-   TYPES
+   ZODIAC CONFIGURATION
 ========================================================= */
 
 const ZODIAC_SIGNS = [
@@ -34,6 +34,43 @@ const ZODIAC_SIGNS = [
 type ZodiacSign = (typeof ZODIAC_SIGNS)[number];
 type CategoryName = "Home" | ZodiacSign;
 
+const ZODIAC_SYMBOLS: Record<ZodiacSign, string> = {
+  Aries: "♈",
+  Taurus: "♉",
+  Gemini: "♊",
+  Cancer: "♋",
+  Leo: "♌",
+  Virgo: "♍",
+  Libra: "♎",
+  Scorpio: "♏",
+  Sagittarius: "♐",
+  Capricorn: "♑",
+  Aquarius: "♒",
+  Pisces: "♓",
+};
+
+const ZODIAC_DATES: Record<ZodiacSign, string> = {
+  Aries: "March 21 – April 19",
+  Taurus: "April 20 – May 20",
+  Gemini: "May 21 – June 20",
+  Cancer: "June 21 – July 22",
+  Leo: "July 23 – August 22",
+  Virgo: "August 23 – September 22",
+  Libra: "September 23 – October 22",
+  Scorpio: "October 23 – November 21",
+  Sagittarius: "November 22 – December 21",
+  Capricorn: "December 22 – January 19",
+  Aquarius: "January 20 – February 18",
+  Pisces: "February 19 – March 20",
+};
+
+const PAGE_SIZE = 50;
+const DISPLAY_BATCH = 24;
+
+/* =========================================================
+   TYPES
+========================================================= */
+
 type PrintifyVariant = {
   id: number;
   title?: string;
@@ -43,16 +80,18 @@ type PrintifyVariant = {
   is_available?: boolean;
 };
 
+type PrintifyImage = {
+  src: string;
+  is_default?: boolean;
+};
+
 type PrintifyProduct = {
   id: string | number;
   title: string;
   description?: string;
   tags?: string[];
-  images?: {
-    src: string;
-    is_default?: boolean;
-  }[];
   variants?: PrintifyVariant[];
+  images?: PrintifyImage[];
 };
 
 type UiProduct = {
@@ -78,152 +117,135 @@ type Props = {
 };
 
 type ApiResponse = {
-  products?: PrintifyProduct[];
-  data?: PrintifyProduct[];
   current_page?: number;
   last_page?: number | null;
+  per_page?: number;
   total?: number | null;
+  data?: PrintifyProduct[];
+  products?: PrintifyProduct[];
   has_more?: boolean;
   next_page?: number | null;
   error?: string;
 };
 
 /* =========================================================
-   CONSTANTS
+   ZODIAC MATCHING
 ========================================================= */
 
-const PAGE_SIZE = 50;
-const DISPLAY_BATCH = 24;
-
-const ZODIAC_SYMBOLS: Record<ZodiacSign, string> = {
-  Aries: "♈",
-  Taurus: "♉",
-  Gemini: "♊",
-  Cancer: "♋",
-  Leo: "♌",
-  Virgo: "♍",
-  Libra: "♎",
-  Scorpio: "♏",
-  Sagittarius: "♐",
-  Capricorn: "♑",
-  Aquarius: "♒",
-  Pisces: "♓",
-};
-
-const ZODIAC_DATES: Record<ZodiacSign, string> = {
-  Aries: "Mar 21 – Apr 19",
-  Taurus: "Apr 20 – May 20",
-  Gemini: "May 21 – Jun 20",
-  Cancer: "Jun 21 – Jul 22",
-  Leo: "Jul 23 – Aug 22",
-  Virgo: "Aug 23 – Sep 22",
-  Libra: "Sep 23 – Oct 22",
-  Scorpio: "Oct 23 – Nov 21",
-  Sagittarius: "Nov 22 – Dec 21",
-  Capricorn: "Dec 22 – Jan 19",
-  Aquarius: "Jan 20 – Feb 18",
-  Pisces: "Feb 19 – Mar 20",
-};
-
-/* =========================================================
-   ZODIAC DETECTION
-========================================================= */
+function stripHtml(value: string): string {
+  return value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function detectZodiacSigns(
   title = "",
   tags: string[] = [],
   description = ""
 ): ZodiacSign[] {
-  const original = [title, ...tags, description]
-    .join(" ")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .toLowerCase();
+  const titleText = title.toLowerCase();
+  const tagText = tags.join(" ").toLowerCase();
+  const descriptionText = stripHtml(description).toLowerCase();
 
-  const normalized = original.replace(
-    /[^a-z0-9]+/g,
-    " "
-  );
-
-  const compact = normalized.replace(/\s+/g, "");
+  const searchable = [
+    titleText,
+    tagText,
+    descriptionText,
+  ].join(" ");
 
   return ZODIAC_SIGNS.filter((sign) => {
     const name = sign.toLowerCase();
 
-    const exactMatch = new RegExp(
-      `(^|\\s)${name}(\\s|$)`,
+    const exactPattern = new RegExp(
+      `\\b${name}\\b`,
       "i"
-    ).test(normalized);
+    );
 
-    const combinations = [
+    const compact = searchable.replace(
+      /[^a-z0-9]/g,
+      ""
+    );
+
+    const combinedNames = [
       `${name}zodiac`,
       `zodiac${name}`,
       `${name}sign`,
       `${name}season`,
-      `${name}themed`,
       `${name}astrology`,
       `${name}horoscope`,
     ];
 
     return (
-      exactMatch ||
-      combinations.some((term) =>
-        compact.includes(term)
+      exactPattern.test(searchable) ||
+      combinedNames.some((value) =>
+        compact.includes(value)
       )
     );
   });
 }
 
 /* =========================================================
-   PRODUCT NORMALIZATION
+   PRINTIFY DATA NORMALIZATION
 ========================================================= */
 
 function normalizeProduct(
   product: PrintifyProduct
 ): UiProduct {
-  const variants = product.variants ?? [];
+  const variants = Array.isArray(product.variants)
+    ? product.variants
+    : [];
 
-  const variant =
+  const selectedVariant =
     variants.find(
-      (item) =>
-        item.is_default === true &&
-        item.is_enabled !== false &&
-        item.is_available !== false
+      (variant) =>
+        variant.is_default === true &&
+        variant.is_enabled !== false &&
+        variant.is_available !== false
     ) ??
     variants.find(
-      (item) =>
-        item.is_enabled !== false &&
-        item.is_available !== false
+      (variant) =>
+        variant.is_enabled !== false &&
+        variant.is_available !== false
     ) ??
     variants.find(
-      (item) => item.is_enabled !== false
+      (variant) =>
+        variant.is_enabled !== false
     ) ??
     null;
 
-  const image =
-    product.images?.find(
-      (item) => item.is_default
-    )?.src ??
-    product.images?.[0]?.src ??
+  const images = Array.isArray(product.images)
+    ? product.images
+    : [];
+
+  const selectedImage =
+    images.find((image) => image.is_default)?.src ??
+    images[0]?.src ??
     "";
 
   const tags = Array.isArray(product.tags)
     ? product.tags.map(String)
     : [];
 
-  const description = product.description ?? "";
+  const title = String(product.title || "Zodiac Product");
+  const description = String(product.description || "");
 
   return {
     id: String(product.id),
-    name: product.title || "Zodiac Product",
-    price: variant ? variant.price / 100 : 0,
-    variantId: variant?.id ?? null,
-    size: variant?.title || "Default",
-    image,
+    name: title,
+    price: selectedVariant
+      ? selectedVariant.price / 100
+      : 0,
+    variantId: selectedVariant?.id ?? null,
+    size: selectedVariant?.title ?? "Default",
+    image: selectedImage,
     description,
     tags,
     signs: detectZodiacSigns(
-      product.title,
+      title,
       tags,
       description
     ),
@@ -233,7 +255,10 @@ function normalizeProduct(
 function normalizeInitialProduct(
   product: InitialProduct
 ): UiProduct {
-  const tags = product.tags ?? [];
+  const tags = Array.isArray(product.tags)
+    ? product.tags
+    : [];
+
   const description = product.description ?? "";
 
   return {
@@ -260,12 +285,14 @@ function extractProducts(
     return response;
   }
 
-  if (Array.isArray(response.products)) {
-    return response.products;
-  }
-
+  // Matches the actual Printify JSON provided.
   if (Array.isArray(response.data)) {
     return response.data;
+  }
+
+  // Also supports the custom API response format.
+  if (Array.isArray(response.products)) {
+    return response.products;
   }
 
   return [];
@@ -273,12 +300,12 @@ function extractProducts(
 
 function getNextPage(
   response: ApiResponse | PrintifyProduct[],
-  currentPage: number,
+  page: number,
   receivedCount: number
 ): number | null {
   if (Array.isArray(response)) {
     return receivedCount >= PAGE_SIZE
-      ? currentPage + 1
+      ? page + 1
       : null;
   }
 
@@ -287,7 +314,7 @@ function getNextPage(
   }
 
   if (typeof response.next_page === "number") {
-    return response.next_page > currentPage
+    return response.next_page > page
       ? response.next_page
       : null;
   }
@@ -296,8 +323,8 @@ function getNextPage(
     typeof response.last_page === "number" &&
     response.last_page > 0
   ) {
-    return currentPage < response.last_page
-      ? currentPage + 1
+    return page < response.last_page
+      ? page + 1
       : null;
   }
 
@@ -305,13 +332,13 @@ function getNextPage(
     typeof response.total === "number" &&
     response.total > 0
   ) {
-    return currentPage * PAGE_SIZE < response.total
-      ? currentPage + 1
+    return page * PAGE_SIZE < response.total
+      ? page + 1
       : null;
   }
 
   return receivedCount >= PAGE_SIZE
-    ? currentPage + 1
+    ? page + 1
     : null;
 }
 
@@ -326,7 +353,7 @@ function NewsletterBox() {
 
   async function subscribe() {
     if (!email.trim()) {
-      setStatus("Please enter your email.");
+      setStatus("Enter your email address.");
       return;
     }
 
@@ -342,19 +369,16 @@ function NewsletterBox() {
         body: JSON.stringify({ email }),
       });
 
-      const result = await response
+      const data = await response
         .json()
         .catch(() => null);
 
-      if (
-        !response.ok ||
-        result?.success === false
-      ) {
+      if (!response.ok || data?.success === false) {
         throw new Error();
       }
 
       setEmail("");
-      setStatus("Subscribed successfully!");
+      setStatus("Successfully subscribed!");
     } catch {
       setStatus("Unable to subscribe right now.");
     } finally {
@@ -365,11 +389,11 @@ function NewsletterBox() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4">
       <h3 className="text-sm font-bold">
-        Stay Updated
+        Join the Zodiac List
       </h3>
 
       <p className="mt-1 text-xs text-gray-500">
-        Zodiac drops and exclusive offers.
+        Get exclusive zodiac drops and offers.
       </p>
 
       <input
@@ -388,7 +412,7 @@ function NewsletterBox() {
         onClick={subscribe}
         className="mt-2 w-full rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
       >
-        {submitting ? "Submitting..." : "Subscribe"}
+        {submitting ? "Subscribing..." : "Subscribe"}
       </button>
 
       {status && (
@@ -450,21 +474,19 @@ export default function HomeClient({
   const [visibleCount, setVisibleCount] =
     useState(DISPLAY_BATCH);
 
-  const [cartMessage, setCartMessage] = useState("");
   const [totalProducts, setTotalProducts] =
     useState<number | null>(null);
+
+  const [cartMessage, setCartMessage] = useState("");
 
   const loadingRef = useRef(false);
   const loadedPagesRef = useRef<Set<number>>(
     new Set()
   );
-  const loadedIdsRef = useRef<Set<string>>(
-    new Set()
-  );
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   /* =======================================================
-     PRINTIFY PAGINATION
+     LOAD PRODUCTS
   ======================================================= */
 
   const loadProducts = useCallback(
@@ -472,7 +494,9 @@ export default function HomeClient({
       page: number,
       refresh = false
     ): Promise<void> => {
-      if (loadingRef.current) return;
+      if (loadingRef.current) {
+        return;
+      }
 
       if (
         !refresh &&
@@ -495,13 +519,14 @@ export default function HomeClient({
         const response = await fetch(
           `/api/printify/products?page=${page}&limit=${PAGE_SIZE}`,
           {
+            method: "GET",
             cache: "no-store",
           }
         );
 
         if (!response.ok) {
           throw new Error(
-            `Unable to load products (${response.status})`
+            `Product API returned ${response.status}`
           );
         }
 
@@ -512,30 +537,21 @@ export default function HomeClient({
 
         const rawProducts = extractProducts(result);
 
-        const mappedProducts = rawProducts
+        const normalizedProducts = rawProducts
           .filter(
             (product) =>
-              product?.id != null &&
-              Boolean(product.title)
+              product != null &&
+              product.id != null &&
+              typeof product.title === "string"
           )
           .map(normalizeProduct);
 
         if (refresh) {
           loadedPagesRef.current.clear();
-          loadedIdsRef.current.clear();
           setVisibleCount(DISPLAY_BATCH);
         }
 
-        let newProducts = 0;
-
-        for (const product of mappedProducts) {
-          if (
-            !loadedIdsRef.current.has(product.id)
-          ) {
-            loadedIdsRef.current.add(product.id);
-            newProducts++;
-          }
-        }
+        let uniqueCount = 0;
 
         setProducts((previous) => {
           const productMap = new Map<
@@ -544,20 +560,24 @@ export default function HomeClient({
           >();
 
           if (!refresh) {
-            previous.forEach((product) => {
+            for (const product of previous) {
               productMap.set(
                 product.id,
                 product
               );
-            });
+            }
           }
 
-          mappedProducts.forEach((product) => {
+          for (const product of normalizedProducts) {
+            if (!productMap.has(product.id)) {
+              uniqueCount++;
+            }
+
             productMap.set(
               product.id,
               product
             );
-          });
+          }
 
           return Array.from(
             productMap.values()
@@ -579,20 +599,28 @@ export default function HomeClient({
           rawProducts.length
         );
 
-        /*
-         * Stop pagination if the API returns
-         * an empty page or repeats the same
-         * products. This prevents infinite loops.
-         */
-        if (
-          rawProducts.length === 0 ||
-          (page > 1 && newProducts === 0)
-        ) {
+        if (rawProducts.length === 0) {
           setNextPage(null);
         } else {
           setNextPage(calculatedNextPage);
         }
+
+        console.info(
+          "[Zodiac Datn] Printify page loaded",
+          {
+            page,
+            received: rawProducts.length,
+            mapped: normalizedProducts.length,
+            uniqueCount,
+            nextPage: calculatedNextPage,
+          }
+        );
       } catch (err) {
+        console.error(
+          "[Zodiac Datn] Product loading failed",
+          err
+        );
+
         setError(
           err instanceof Error
             ? err.message
@@ -621,22 +649,22 @@ export default function HomeClient({
       number
     >;
 
-    ZODIAC_SIGNS.forEach((sign) => {
+    for (const sign of ZODIAC_SIGNS) {
       counts[sign] = products.filter(
         (product) =>
           product.signs.includes(sign)
       ).length;
-    });
+    }
 
     return counts;
   }, [products]);
 
   /* =======================================================
-     FILTERING
+     SEARCH AND FILTERS
   ======================================================= */
 
   const filteredProducts = useMemo(() => {
-    const search = searchTerm
+    const query = searchTerm
       .trim()
       .toLowerCase();
 
@@ -648,21 +676,18 @@ export default function HomeClient({
         );
 
       const searchMatches =
-        !search ||
+        !query ||
         [
           product.name,
-          product.description,
+          stripHtml(product.description),
           ...product.tags,
           ...product.signs,
         ]
           .join(" ")
           .toLowerCase()
-          .includes(search);
+          .includes(query);
 
-      return (
-        categoryMatches &&
-        searchMatches
-      );
+      return categoryMatches && searchMatches;
     });
   }, [
     products,
@@ -683,8 +708,7 @@ export default function HomeClient({
   );
 
   const hasMoreVisible =
-    visibleCount <
-    filteredProducts.length;
+    visibleCount < filteredProducts.length;
 
   /* =======================================================
      INFINITE SCROLL
@@ -693,13 +717,13 @@ export default function HomeClient({
   useEffect(() => {
     const element = sentinelRef.current;
 
-    if (!element) return;
+    if (!element) {
+      return;
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (
-          !entries[0]?.isIntersecting
-        ) {
+        if (!entries[0]?.isIntersecting) {
           return;
         }
 
@@ -731,13 +755,13 @@ export default function HomeClient({
     return () => observer.disconnect();
   }, [
     hasMoreVisible,
-    nextPage,
     filteredProducts.length,
+    nextPage,
     loadProducts,
   ]);
 
   /* =======================================================
-     ACTIONS
+     USER ACTIONS
   ======================================================= */
 
   function selectCategory(
@@ -752,21 +776,15 @@ export default function HomeClient({
     });
   }
 
-  function openProductPage(
-    id: string
-  ) {
+  function openProduct(id: string) {
     router.push(
       `/product/${encodeURIComponent(id)}`
     );
   }
 
-  function handleAddToCart(
-    product: UiProduct
-  ) {
-    if (
-      product.variantId === null
-    ) {
-      openProductPage(product.id);
+  function addProductToCart(product: UiProduct) {
+    if (product.variantId === null) {
+      openProduct(product.id);
       return;
     }
 
@@ -780,9 +798,11 @@ export default function HomeClient({
       });
 
       setCartMessage(
-        `${product.name} added to cart`
+        `${product.name} added to cart.`
       );
-    } catch {
+    } catch (err) {
+      console.error("Cart error:", err);
+
       setCartMessage(
         "Unable to add product to cart."
       );
@@ -790,7 +810,7 @@ export default function HomeClient({
   }
 
   /* =======================================================
-     CATEGORY NAVIGATION
+     SIDEBAR CONTENT
   ======================================================= */
 
   const categoryNavigation = (
@@ -827,6 +847,7 @@ export default function HomeClient({
             <span className="text-lg">
               {ZODIAC_SYMBOLS[sign]}
             </span>
+
             {sign}
           </span>
 
@@ -906,7 +927,7 @@ export default function HomeClient({
                 router.push("/wishlist")
               }
               className="px-1 text-xl"
-              aria-label={`Wishlist with ${wishlist.length} items`}
+              aria-label={`Wishlist: ${wishlist.length} items`}
             >
               {wishlist.length > 0
                 ? "♥"
@@ -919,7 +940,7 @@ export default function HomeClient({
                 router.push("/cart")
               }
               className="px-1 text-xl"
-              aria-label="Cart"
+              aria-label="Shopping cart"
             >
               🛒
             </button>
@@ -984,12 +1005,14 @@ export default function HomeClient({
               >
                 My Orders
               </a>
+
               <a
                 href="/cart"
                 className="block"
               >
                 Shopping Cart
               </a>
+
               <a
                 href="/wishlist"
                 className="block"
@@ -1018,7 +1041,7 @@ export default function HomeClient({
         {/* MAIN CONTENT */}
         <div className="min-w-0 flex-1">
           {/* HERO */}
-          <section className="bg-white px-4 py-10 text-center sm:py-14">
+          <section className="bg-white px-4 py-8 text-center sm:py-12">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gray-500">
               Wear Your Energy
             </p>
@@ -1031,8 +1054,8 @@ export default function HomeClient({
 
             <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-gray-500">
               {selectedCategory === "Home"
-                ? "Discover zodiac inspired fashion made for your sign, your energy, and your style."
-                : `${ZODIAC_DATES[selectedCategory]} · Discover clothing and accessories inspired by your zodiac sign.`}
+                ? "Discover zodiac inspired fashion for your sign, your energy, and your style."
+                : `${ZODIAC_DATES[selectedCategory]} · Explore merchandise inspired by your zodiac sign.`}
             </p>
 
             {selectedCategory !== "Home" && (
@@ -1095,7 +1118,7 @@ export default function HomeClient({
                 <p className="mt-1 text-xs text-gray-500">
                   {filteredProducts.length} matching products loaded
                   {totalProducts !== null &&
-                    ` · ${totalProducts} total in catalog`}
+                    ` · ${totalProducts} total products`}
                 </p>
               </div>
 
@@ -1104,16 +1127,14 @@ export default function HomeClient({
                 onClick={() =>
                   void loadProducts(1, true)
                 }
-                disabled={
-                  loading || loadingMore
-                }
+                disabled={loading || loadingMore}
                 className="rounded-lg border border-black bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50"
               >
                 Refresh
               </button>
             </div>
 
-            {/* CART MESSAGE */}
+            {/* CART FEEDBACK */}
             {cartMessage && (
               <div
                 role="status"
@@ -1133,7 +1154,7 @@ export default function HomeClient({
               </div>
             )}
 
-            {/* ERROR */}
+            {/* ERRORS */}
             {error && (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 <p>{error}</p>
@@ -1152,27 +1173,26 @@ export default function HomeClient({
               </div>
             )}
 
-            {/* LOADING SKELETONS */}
-            {loading &&
-              products.length === 0 && (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-                  {Array.from({
-                    length: 8,
-                  }).map((_, index) => (
-                    <div
-                      key={index}
-                      className="animate-pulse rounded-xl border bg-white p-3"
-                    >
-                      <div className="aspect-square rounded-lg bg-gray-200" />
-                      <div className="mt-3 h-4 rounded bg-gray-200" />
-                      <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
-                      <div className="mt-3 h-9 rounded bg-gray-200" />
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* LOADING */}
+            {loading && products.length === 0 && (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+                {Array.from({
+                  length: 8,
+                }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="animate-pulse rounded-xl border bg-white p-3"
+                  >
+                    <div className="aspect-square rounded-lg bg-gray-200" />
+                    <div className="mt-3 h-4 rounded bg-gray-200" />
+                    <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
+                    <div className="mt-3 h-9 rounded bg-gray-200" />
+                  </div>
+                ))}
+              </div>
+            )}
 
-            {/* EMPTY CATEGORY */}
+            {/* EMPTY STATE */}
             {!loading &&
               filteredProducts.length === 0 && (
                 <div className="rounded-xl border bg-white px-5 py-12 text-center">
@@ -1182,9 +1202,6 @@ export default function HomeClient({
 
                   <p className="mt-2 text-sm text-gray-500">
                     Try another zodiac sign or search term.
-                    Products need their zodiac sign in the
-                    Printify title, tags, or description to
-                    appear in a zodiac collection.
                   </p>
 
                   {nextPage !== null && (
@@ -1192,9 +1209,7 @@ export default function HomeClient({
                       type="button"
                       disabled={loadingMore}
                       onClick={() =>
-                        void loadProducts(
-                          nextPage
-                        )
+                        void loadProducts(nextPage)
                       }
                       className="mt-4 rounded-full bg-black px-5 py-3 text-xs font-bold text-white disabled:opacity-50"
                     >
@@ -1206,117 +1221,98 @@ export default function HomeClient({
 
             {/* PRODUCT GRID */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-              {visibleProducts.map(
-                (product) => (
-                  <article
-                    key={product.id}
-                    className="group relative rounded-xl border border-gray-200 bg-white p-2 transition hover:border-black hover:shadow-md sm:p-3"
+              {visibleProducts.map((product) => (
+                <article
+                  key={product.id}
+                  className="group relative rounded-xl border border-gray-200 bg-white p-2 transition hover:border-black hover:shadow-md sm:p-3"
+                >
+                  {/* WISHLIST */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      toggleWishlist(product.id)
+                    }
+                    className="absolute right-3 top-3 z-10 rounded-full bg-white p-2 text-lg shadow-sm"
+                    aria-label="Toggle wishlist"
                   >
-                    {/* WISHLIST */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        toggleWishlist(
-                          product.id
-                        )
-                      }
-                      className="absolute right-3 top-3 z-10 rounded-full bg-white p-2 text-lg shadow-sm"
-                      aria-label="Toggle wishlist"
-                    >
-                      {isInWishlist(
-                        product.id
-                      )
-                        ? "♥"
-                        : "♡"}
-                    </button>
+                    {isInWishlist(product.id)
+                      ? "♥"
+                      : "♡"}
+                  </button>
 
-                    {/* IMAGE */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        openProductPage(
-                          product.id
-                        )
-                      }
-                      className="block w-full"
-                    >
-                      <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50">
-                        {product.image ? (
-                          <img
-                            src={
-                              product.image
-                            }
-                            alt={
-                              product.name
-                            }
-                            loading="lazy"
-                            className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
-                          />
-                        ) : (
-                          <span className="text-xs text-gray-400">
-                            Image unavailable
-                          </span>
-                        )}
-                      </div>
-                    </button>
-
-                    {/* PRODUCT DETAILS */}
-                    <div className="pt-3">
-                      {product.signs.length >
-                        0 && (
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                          {product.signs
-                            .map(
-                              (sign) =>
-                                `${ZODIAC_SYMBOLS[sign]} ${sign}`
-                            )
-                            .join(" · ")}
-                        </p>
+                  {/* IMAGE */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openProduct(product.id)
+                    }
+                    className="block w-full"
+                  >
+                    <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50">
+                      {product.image ? (
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          loading="lazy"
+                          className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <span className="text-xs text-gray-400">
+                          Image unavailable
+                        </span>
                       )}
-
-                      <h3 className="min-h-[2.5rem] line-clamp-2 text-xs font-semibold leading-5 sm:text-sm">
-                        {product.name}
-                      </h3>
-
-                      <p className="mt-2 text-base font-black">
-                        {format(
-                          product.price
-                        )}
-                      </p>
-
-                      {/* ACTIONS */}
-                      <div className="mt-3 flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleAddToCart(
-                              product
-                            )
-                          }
-                          className="w-full rounded-lg bg-black px-2 py-2.5 text-xs font-bold text-white transition hover:bg-gray-800"
-                        >
-                          Add to Cart
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openProductPage(
-                              product.id
-                            )
-                          }
-                          className="w-full rounded-lg border border-black px-2 py-2.5 text-xs font-bold text-black transition hover:bg-gray-100"
-                        >
-                          Order Now
-                        </button>
-                      </div>
                     </div>
-                  </article>
-                )
-              )}
+                  </button>
+
+                  {/* PRODUCT INFORMATION */}
+                  <div className="pt-3">
+                    {product.signs.length > 0 && (
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                        {product.signs
+                          .map(
+                            (sign) =>
+                              `${ZODIAC_SYMBOLS[sign]} ${sign}`
+                          )
+                          .join(" · ")}
+                      </p>
+                    )}
+
+                    <h3 className="min-h-[2.5rem] line-clamp-2 text-xs font-semibold leading-5 sm:text-sm">
+                      {product.name}
+                    </h3>
+
+                    <p className="mt-2 text-base font-black">
+                      {format(product.price)}
+                    </p>
+
+                    {/* ACTIONS */}
+                    <div className="mt-3 flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          addProductToCart(product)
+                        }
+                        className="w-full rounded-lg bg-black px-2 py-2.5 text-xs font-bold text-white transition hover:bg-gray-800"
+                      >
+                        Add to Cart
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openProduct(product.id)
+                        }
+                        className="w-full rounded-lg border border-black px-2 py-2.5 text-xs font-bold text-black transition hover:bg-gray-100"
+                      >
+                        Order Now
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
 
-            {/* INFINITE SCROLL */}
+            {/* PAGINATION */}
             <div
               ref={sentinelRef}
               className="flex min-h-20 items-center justify-center py-8"
@@ -1331,8 +1327,7 @@ export default function HomeClient({
                   onClick={() =>
                     setVisibleCount(
                       (current) =>
-                        current +
-                        DISPLAY_BATCH
+                        current + DISPLAY_BATCH
                     )
                   }
                   className="rounded-full border border-gray-300 bg-white px-6 py-3 text-sm font-semibold"
@@ -1343,16 +1338,13 @@ export default function HomeClient({
                 <button
                   type="button"
                   onClick={() =>
-                    void loadProducts(
-                      nextPage
-                    )
+                    void loadProducts(nextPage)
                   }
                   className="rounded-full border border-gray-300 bg-white px-6 py-3 text-sm font-semibold"
                 >
                   Load More Products
                 </button>
-              ) : filteredProducts.length >
-                0 ? (
+              ) : filteredProducts.length > 0 ? (
                 <p className="text-xs text-gray-400">
                   You've reached the end of this collection.
                 </p>
@@ -1376,18 +1368,23 @@ export default function HomeClient({
           <a href="/about">
             About
           </a>
+
           <a href="/contact">
             Contact
           </a>
+
           <a href="/shipping-policy">
             Shipping
           </a>
+
           <a href="/refund-policy">
             Refunds
           </a>
+
           <a href="/privacy-policy">
             Privacy
           </a>
+
           <a href="/terms">
             Terms
           </a>
