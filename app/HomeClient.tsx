@@ -156,13 +156,6 @@ function normalizeText(value: string): string {
 
 /* =========================================================
    ZODIAC CLASSIFICATION
-
-   IMPORTANT:
-   1. Product title has first priority.
-   2. Explicit product tags have second priority.
-   3. Descriptions are never used for classification.
-   4. Each product belongs to one zodiac category.
-   5. Products without a match belong to Other.
 ========================================================= */
 
 function findSignInTitle(
@@ -220,19 +213,11 @@ function detectZodiacCategory(
   title = "",
   tags: string[] = []
 ): ZodiacSign | "Other" {
-  const titleSign = findSignInTitle(title);
-
-  if (titleSign) {
-    return titleSign;
-  }
-
-  const tagSign = findSignInTags(tags);
-
-  if (tagSign) {
-    return tagSign;
-  }
-
-  return "Other";
+  return (
+    findSignInTitle(title) ??
+    findSignInTags(tags) ??
+    "Other"
+  );
 }
 
 function detectZodiacSigns(
@@ -377,7 +362,9 @@ function getNextPage(
       return null;
     }
 
-    if (typeof response.next_page === "number") {
+    if (
+      typeof response.next_page === "number"
+    ) {
       return response.next_page > currentPage
         ? response.next_page
         : null;
@@ -420,7 +407,8 @@ function getNextPage(
 function NewsletterBox() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] =
+    useState(false);
 
   async function subscribe() {
     if (!email.trim()) {
@@ -432,26 +420,39 @@ function NewsletterBox() {
     setStatus("");
 
     try {
-      const response = await fetch("/api/newsletter", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
-      });
+      const response = await fetch(
+        "/api/newsletter",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email }),
+        }
+      );
 
       const data = await response
         .json()
         .catch(() => null);
 
-      if (!response.ok || data?.success === false) {
-        throw new Error();
+      if (
+        !response.ok ||
+        data?.success === false
+      ) {
+        throw new Error(
+          data?.error ||
+          "Unable to subscribe right now."
+        );
       }
 
       setEmail("");
       setStatus("Successfully subscribed!");
-    } catch {
-      setStatus("Unable to subscribe right now.");
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Unable to subscribe right now."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -483,7 +484,9 @@ function NewsletterBox() {
         onClick={subscribe}
         className="mt-2 w-full rounded-lg bg-black px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
       >
-        {submitting ? "Subscribing..." : "Subscribe"}
+        {submitting
+          ? "Subscribing..."
+          : "Subscribe"}
       </button>
 
       {status && (
@@ -517,21 +520,24 @@ export default function HomeClient({
     format,
   } = useCurrency();
 
-  const [products, setProducts] = useState<UiProduct[]>(
-    () =>
-      initialProducts
-        .filter(
-          (product) =>
-            product.id != null &&
-            Boolean(product.name)
-        )
-        .map(normalizeInitialProduct)
+  const [products, setProducts] = useState<
+    UiProduct[]
+  >(() =>
+    initialProducts
+      .filter(
+        (product) =>
+          product.id != null &&
+          Boolean(product.name)
+      )
+      .map(normalizeInitialProduct)
   );
 
   const [selectedCategory, setSelectedCategory] =
     useState<CategoryName>("Home");
 
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] =
+    useState("");
+
   const [mobileMenuOpen, setMobileMenuOpen] =
     useState(false);
 
@@ -547,9 +553,12 @@ export default function HomeClient({
   const [inventoryComplete, setInventoryComplete] =
     useState(false);
 
-  const [cartMessage, setCartMessage] = useState("");
+  const [cartMessage, setCartMessage] =
+    useState("");
 
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const sentinelRef =
+    useRef<HTMLDivElement>(null);
+
   const requestIdRef = useRef(0);
 
   /* =======================================================
@@ -563,8 +572,13 @@ export default function HomeClient({
     setError("");
     setInventoryComplete(false);
 
-    const allProducts = new Map<string, UiProduct>();
-    const seenPageSignatures = new Set<string>();
+    const allProducts = new Map<
+      string,
+      UiProduct
+    >();
+
+    const seenPageSignatures =
+      new Set<string>();
 
     let page = 1;
     let reportedTotal: number | null = null;
@@ -598,7 +612,8 @@ export default function HomeClient({
           throw new Error(result.error);
         }
 
-        const rawProducts = extractProducts(result);
+        const rawProducts =
+          extractProducts(result);
 
         if (
           !Array.isArray(result) &&
@@ -613,16 +628,22 @@ export default function HomeClient({
         }
 
         const pageSignature = rawProducts
-          .map((product) => String(product.id))
+          .map((product) =>
+            String(product.id)
+          )
           .join("|");
 
-        if (seenPageSignatures.has(pageSignature)) {
+        if (
+          seenPageSignatures.has(pageSignature)
+        ) {
           throw new Error(
-            `The product API returned duplicate data for page ${page}. Check pagination in app/api/printify/products/route.ts.`
+            `Printify returned duplicate data on page ${page}. Check API pagination.`
           );
         }
 
-        seenPageSignatures.add(pageSignature);
+        seenPageSignatures.add(
+          pageSignature
+        );
 
         for (const product of rawProducts) {
           if (
@@ -633,7 +654,8 @@ export default function HomeClient({
             continue;
           }
 
-          const normalized = normalizeProduct(product);
+          const normalized =
+            normalizeProduct(product);
 
           allProducts.set(
             normalized.id,
@@ -641,7 +663,9 @@ export default function HomeClient({
           );
         }
 
-        if (requestId !== requestIdRef.current) {
+        if (
+          requestId !== requestIdRef.current
+        ) {
           return;
         }
 
@@ -662,7 +686,8 @@ export default function HomeClient({
           {
             page,
             received: rawProducts.length,
-            uniqueProducts: allProducts.size,
+            uniqueProducts:
+              allProducts.size,
             reportedTotal,
             nextPage,
           }
@@ -675,20 +700,22 @@ export default function HomeClient({
 
         if (nextPage <= page) {
           throw new Error(
-            "The product API returned an invalid next page."
+            "Invalid Printify next page."
           );
         }
 
         page = nextPage;
       }
 
-      if (requestId !== requestIdRef.current) {
+      if (
+        requestId !== requestIdRef.current
+      ) {
         return;
       }
 
       if (!completed) {
         throw new Error(
-          "The product API exceeded the maximum page limit."
+          "Maximum Printify page limit reached."
         );
       }
 
@@ -699,7 +726,9 @@ export default function HomeClient({
       setTotalProducts(reportedTotal);
       setInventoryComplete(true);
     } catch (err) {
-      if (requestId !== requestIdRef.current) {
+      if (
+        requestId !== requestIdRef.current
+      ) {
         return;
       }
 
@@ -714,7 +743,9 @@ export default function HomeClient({
           : "Unable to load products."
       );
     } finally {
-      if (requestId === requestIdRef.current) {
+      if (
+        requestId === requestIdRef.current
+      ) {
         setLoading(false);
       }
     }
@@ -729,9 +760,7 @@ export default function HomeClient({
   }, [loadAllProducts]);
 
   /* =======================================================
-     ACCURATE CATEGORY COUNTS
-
-     Every product contributes to exactly one category.
+     CATEGORY COUNTS
   ======================================================= */
 
   const categoryCounts = useMemo(() => {
@@ -754,7 +783,7 @@ export default function HomeClient({
   }, [products]);
 
   /* =======================================================
-     ACCURATE CATEGORY FILTERING
+     CATEGORY FILTERING
   ======================================================= */
 
   const filteredProducts = useMemo(() => {
@@ -799,44 +828,55 @@ export default function HomeClient({
     searchTerm,
   ]);
 
-  const visibleProducts = filteredProducts.slice(
-    0,
-    visibleCount
-  );
+  const visibleProducts =
+    filteredProducts.slice(
+      0,
+      visibleCount
+    );
 
   const hasMoreVisible =
-    visibleCount < filteredProducts.length;
+    visibleCount <
+    filteredProducts.length;
 
   /* =======================================================
      INFINITE DISPLAY SCROLL
   ======================================================= */
 
   useEffect(() => {
-    const element = sentinelRef.current;
+    const element =
+      sentinelRef.current;
 
-    if (!element || !hasMoreVisible) {
+    if (
+      !element ||
+      !hasMoreVisible
+    ) {
       return;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setVisibleCount((current) =>
-            Math.min(
-              current + DISPLAY_BATCH,
-              filteredProducts.length
-            )
-          );
+    const observer =
+      new IntersectionObserver(
+        (entries) => {
+          if (
+            entries[0]?.isIntersecting
+          ) {
+            setVisibleCount(
+              (current) =>
+                Math.min(
+                  current + DISPLAY_BATCH,
+                  filteredProducts.length
+                )
+            );
+          }
+        },
+        {
+          rootMargin: "500px",
         }
-      },
-      {
-        rootMargin: "500px",
-      }
-    );
+      );
 
     observer.observe(element);
 
-    return () => observer.disconnect();
+    return () =>
+      observer.disconnect();
   }, [
     hasMoreVisible,
     filteredProducts.length,
@@ -866,8 +906,12 @@ export default function HomeClient({
     );
   }
 
-  function addProductToCart(product: UiProduct) {
-    if (product.variantId === null) {
+  function addProductToCart(
+    product: UiProduct
+  ) {
+    if (
+      product.variantId === null
+    ) {
       openProduct(product.id);
       return;
     }
@@ -875,7 +919,8 @@ export default function HomeClient({
     try {
       addItem({
         id: product.id,
-        variant_id: product.variantId,
+        variant_id:
+          product.variantId,
         name: product.name,
         price: product.price,
         size: product.size,
@@ -885,7 +930,10 @@ export default function HomeClient({
         `${product.name} added to cart.`
       );
     } catch (err) {
-      console.error("Cart error:", err);
+      console.error(
+        "Cart error:",
+        err
+      );
 
       setCartMessage(
         "Unable to add product to cart."
@@ -911,34 +959,38 @@ export default function HomeClient({
         }`}
       >
         <span>All Products</span>
-        <span>{products.length}</span>
+        <span>
+          {products.length}
+        </span>
       </button>
 
-      {ZODIAC_SIGNS.map((sign) => (
-        <button
-          key={sign}
-          type="button"
-          onClick={() =>
-            selectCategory(sign)
-          }
-          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${
-            selectedCategory === sign
-              ? "bg-black font-semibold text-white"
-              : "text-gray-700 hover:bg-gray-100"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <span className="text-lg">
-              {ZODIAC_SYMBOLS[sign]}
+      {ZODIAC_SIGNS.map(
+        (sign) => (
+          <button
+            key={sign}
+            type="button"
+            onClick={() =>
+              selectCategory(sign)
+            }
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${
+              selectedCategory === sign
+                ? "bg-black font-semibold text-white"
+                : "text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-lg">
+                {ZODIAC_SYMBOLS[sign]}
+              </span>
+              {sign}
             </span>
-            {sign}
-          </span>
 
-          <span className="text-xs opacity-60">
-            {categoryCounts[sign]}
-          </span>
-        </button>
-      ))}
+            <span className="text-xs opacity-60">
+              {categoryCounts[sign]}
+            </span>
+          </button>
+        )
+      )}
 
       <button
         type="button"
@@ -1030,7 +1082,9 @@ export default function HomeClient({
               className="px-1 text-xl"
               aria-label={`Wishlist: ${wishlist.length} items`}
             >
-              {wishlist.length > 0 ? "♥" : "♡"}
+              {wishlist.length > 0
+                ? "♥"
+                : "♡"}
             </button>
 
             <button
@@ -1183,7 +1237,6 @@ export default function HomeClient({
                     </button>
                   ))}
 
-                  {/* OTHER CATEGORY TILE */}
                   <button
                     type="button"
                     onClick={() =>
@@ -1287,23 +1340,24 @@ export default function HomeClient({
             )}
 
             {/* LOADING SKELETON */}
-            {loading && products.length === 0 && (
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-                {Array.from({
-                  length: 8,
-                }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="animate-pulse rounded-xl border bg-white p-3"
-                  >
-                    <div className="aspect-square rounded-lg bg-gray-200" />
-                    <div className="mt-3 h-4 rounded bg-gray-200" />
-                    <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
-                    <div className="mt-3 h-9 rounded bg-gray-200" />
-                  </div>
-                ))}
-              </div>
-            )}
+            {loading &&
+              products.length === 0 && (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+                  {Array.from({
+                    length: 8,
+                  }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="animate-pulse rounded-xl border bg-white p-3"
+                    >
+                      <div className="aspect-square rounded-lg bg-gray-200" />
+                      <div className="mt-3 h-4 rounded bg-gray-200" />
+                      <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
+                      <div className="mt-3 h-9 rounded bg-gray-200" />
+                    </div>
+                  ))}
+                </div>
+              )}
 
             {/* EMPTY STATE */}
             {!loading &&
@@ -1332,86 +1386,102 @@ export default function HomeClient({
 
             {/* PRODUCT GRID */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-              {visibleProducts.map((product) => (
-                <article
-                  key={product.id}
-                  className="group relative rounded-xl border border-gray-200 bg-white p-2 transition hover:border-black hover:shadow-md sm:p-3"
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleWishlist(product.id)
-                    }
-                    className="absolute right-3 top-3 z-10 rounded-full bg-white p-2 text-lg shadow-sm"
-                    aria-label="Toggle wishlist"
+              {visibleProducts.map(
+                (product) => (
+                  <article
+                    key={product.id}
+                    className="group relative rounded-xl border border-gray-200 bg-white p-2 transition hover:border-black hover:shadow-md sm:p-3"
                   >
-                    {isInWishlist(product.id)
-                      ? "♥"
-                      : "♡"}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleWishlist(
+                          product.id
+                        )
+                      }
+                      className="absolute right-3 top-3 z-10 rounded-full bg-white p-2 text-lg shadow-sm"
+                      aria-label="Toggle wishlist"
+                    >
+                      {isInWishlist(product.id)
+                        ? "♥"
+                        : "♡"}
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openProduct(product.id)
-                    }
-                    className="block w-full"
-                  >
-                    <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50">
-                      {product.image ? (
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          loading="lazy"
-                          className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
-                        />
-                      ) : (
-                        <span className="text-xs text-gray-400">
-                          Image unavailable
-                        </span>
-                      )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openProduct(
+                          product.id
+                        )
+                      }
+                      className="block w-full"
+                    >
+                      <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-gray-50">
+                        {product.image ? (
+                          <img
+                            src={
+                              product.image
+                            }
+                            alt={
+                              product.name
+                            }
+                            loading="lazy"
+                            className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">
+                            Image unavailable
+                          </span>
+                        )}
+                      </div>
+                    </button>
+
+                    <div className="pt-3">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                        {product.category === "Other"
+                          ? "Other"
+                          : `${ZODIAC_SYMBOLS[product.category]} ${product.category}`}
+                      </p>
+
+                      <h3 className="min-h-[2.5rem] line-clamp-2 text-xs font-semibold leading-5 sm:text-sm">
+                        {product.name}
+                      </h3>
+
+                      <p className="mt-2 text-base font-black">
+                        {format(
+                          product.price
+                        )}
+                      </p>
+
+                      <div className="mt-3 flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            addProductToCart(
+                              product
+                            )
+                          }
+                          className="w-full rounded-lg bg-black px-2 py-2.5 text-xs font-bold text-white transition hover:bg-gray-800"
+                        >
+                          Add to Cart
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openProduct(
+                              product.id
+                            )
+                          }
+                          className="w-full rounded-lg border border-black px-2 py-2.5 text-xs font-bold text-black transition hover:bg-gray-100"
+                        >
+                          Order Now
+                        </button>
+                      </div>
                     </div>
-                  </button>
-
-                  <div className="pt-3">
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                      {product.category === "Other"
-                        ? "Other"
-                        : `${ZODIAC_SYMBOLS[product.category]} ${product.category}`}
-                    </p>
-
-                    <h3 className="min-h-[2.5rem] line-clamp-2 text-xs font-semibold leading-5 sm:text-sm">
-                      {product.name}
-                    </h3>
-
-                    <p className="mt-2 text-base font-black">
-                      {format(product.price)}
-                    </p>
-
-                    <div className="mt-3 flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          addProductToCart(product)
-                        }
-                        className="w-full rounded-lg bg-black px-2 py-2.5 text-xs font-bold text-white transition hover:bg-gray-800"
-                      >
-                        Add to Cart
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openProduct(product.id)
-                        }
-                        className="w-full rounded-lg border border-black px-2 py-2.5 text-xs font-bold text-black transition hover:bg-gray-100"
-                      >
-                        Order Now
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                )
+              )}
             </div>
 
             {/* INFINITE SCROLL */}
@@ -1439,9 +1509,20 @@ export default function HomeClient({
                 <p className="text-sm text-gray-500">
                   Loading more inventory...
                 </p>
-              ) : filteredProducts.length > 0 ? (
+              ) : error ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void loadAllProducts()
+                  }
+                  className="rounded-full border border-black bg-white px-6 py-3 text-sm font-semibold"
+                >
+                  Retry Loading Products
+                </button>
+              ) : inventoryComplete &&
+                filteredProducts.length > 0 ? (
                 <p className="text-xs text-gray-400">
-                  You've reached the end of this collection.
+                  All {filteredProducts.length} matching products displayed.
                 </p>
               ) : null}
             </div>
