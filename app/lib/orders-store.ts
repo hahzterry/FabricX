@@ -1,9 +1,32 @@
-import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-);
+import {
+  createClient,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
+
+let supabaseClient: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient {
+  if (supabaseClient) {
+    return supabaseClient;
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SECRET_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      "Missing SUPABASE_URL or SUPABASE_SECRET_KEY."
+    );
+  }
+
+  supabaseClient = createClient(
+    supabaseUrl,
+    supabaseKey
+  );
+
+  return supabaseClient;
+}
 
 export type OrderStatus =
   | "CONFIRMED"
@@ -48,26 +71,44 @@ export type StoredOrder = {
   };
 };
 
-export async function saveOrder(order: StoredOrder): Promise<void> {
-  const { error } = await supabase.from("orders").upsert({
-    id: order.id,
-    printify_order_id: order.printify_order_id ?? null,
-    status: order.status,
-    items: order.items,
-    totals: order.totals,
-    customer: order.customer,
-    shipping_address: order.shippingAddress,
-  });
-  if (error) throw new Error(error.message);
+export async function saveOrder(
+  order: StoredOrder
+): Promise<void> {
+  const supabase = getSupabase();
+
+  const { error } = await supabase
+    .from("orders")
+    .upsert({
+      id: order.id,
+      printify_order_id:
+        order.printify_order_id ?? null,
+      status: order.status,
+      items: order.items,
+      totals: order.totals,
+      customer: order.customer,
+      shipping_address: order.shippingAddress,
+    });
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
-export async function getOrderById(id: string): Promise<StoredOrder | null> {
+export async function getOrderById(
+  id: string
+): Promise<StoredOrder | null> {
+  const supabase = getSupabase();
+
   const { data, error } = await supabase
     .from("orders")
     .select("*")
     .eq("id", id)
     .single();
-  if (error || !data) return null;
+
+  if (error || !data) {
+    return null;
+  }
+
   return mapRow(data);
 }
 
@@ -75,15 +116,19 @@ export async function updateOrderByPrintifyId(
   printifyOrderId: string,
   updates: Partial<StoredOrder>
 ): Promise<boolean> {
+  const supabase = getSupabase();
+
   const { error } = await supabase
     .from("orders")
     .update({
       status: updates.status,
       tracking_url: updates.tracking_url ?? null,
-      tracking_number: updates.tracking_number ?? null,
+      tracking_number:
+        updates.tracking_number ?? null,
       carrier: updates.carrier ?? null,
     })
     .eq("printify_order_id", printifyOrderId);
+
   return !error;
 }
 

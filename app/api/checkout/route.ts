@@ -22,6 +22,7 @@ type PrintifyProduct = {
   id: string;
   title: string;
   variants: PrintifyVariant[];
+<<<<<<< HEAD
   visible?: boolean;
 };
 
@@ -83,6 +84,10 @@ function parseItems(value: unknown): CheckoutItem[] {
   return [...merged.values()];
 }
 
+=======
+};
+
+>>>>>>> e9886a2 (up)
 export async function POST(request: NextRequest) {
   try {
     const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -90,10 +95,17 @@ export async function POST(request: NextRequest) {
     const shopId = process.env.PRINTIFY_SHOP_ID;
 
     if (!stripeKey || !printifyToken || !shopId) {
+<<<<<<< HEAD
       console.error("Missing checkout environment variables.");
 
       return NextResponse.json(
         { error: "Checkout is not configured." },
+=======
+      return NextResponse.json(
+        {
+          error: "Checkout is not configured.",
+        },
+>>>>>>> e9886a2 (up)
         { status: 503 }
       );
     }
@@ -101,6 +113,7 @@ export async function POST(request: NextRequest) {
     const stripe = new Stripe(stripeKey);
 
     const body = await request.json();
+<<<<<<< HEAD
     const items = parseItems(body?.items);
 
     const products = new Map<string, PrintifyProduct>();
@@ -182,6 +195,134 @@ export async function POST(request: NextRequest) {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+=======
+    const items: CheckoutItem[] = body.items;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        {
+          error: "Your cart is empty.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (items.length > 50) {
+      return NextResponse.json(
+        {
+          error: "Too many cart items.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] =
+      [];
+
+    const baseUrl = (
+      process.env.PRINTIFY_BASE_URL ||
+      "https://api.printify.com/v1"
+    ).replace(/\/+$/, "");
+
+    for (const item of items) {
+      if (
+        !item ||
+        typeof item.id !== "string" ||
+        !/^[a-zA-Z0-9_-]+$/.test(item.id) ||
+        !Number.isSafeInteger(item.variant_id) ||
+        item.variant_id <= 0 ||
+        !Number.isSafeInteger(item.quantity) ||
+        item.quantity < 1 ||
+        item.quantity > 50
+      ) {
+        return NextResponse.json(
+          {
+            error: "Invalid cart item.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const productId = item.id;
+      const variantId = item.variant_id;
+      const quantity = item.quantity;
+
+      const productResponse = await fetch(
+        `${baseUrl}/shops/${encodeURIComponent(
+          shopId
+        )}/products/${encodeURIComponent(productId)}.json`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${printifyToken}`,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (!productResponse.ok) {
+        console.error(
+          "Printify product lookup failed:",
+          productId,
+          productResponse.status
+        );
+
+        return NextResponse.json(
+          {
+            error: "A product is no longer available.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const product =
+        (await productResponse.json()) as PrintifyProduct;
+
+      const variant = product.variants?.find(
+        (entry) => entry.id === variantId
+      );
+
+      if (
+        !variant ||
+        variant.is_enabled === false ||
+        variant.is_available === false ||
+        !Number.isSafeInteger(variant.price) ||
+        variant.price <= 0
+      ) {
+        return NextResponse.json(
+          {
+            error: "A selected product variant is unavailable.",
+          },
+          { status: 400 }
+        );
+      }
+
+      lineItems.push({
+        quantity,
+        price_data: {
+          currency: "usd",
+          unit_amount: variant.price,
+          product_data: {
+            name: product.title.slice(0, 200),
+            metadata: {
+              printify_product_id: productId,
+              printify_variant_id: String(variantId),
+            },
+          },
+        },
+      });
+    }
+
+    const origin = (
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      "https://shop.zodiacdatn.com"
+    ).replace(/\/+$/, "");
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+
+>>>>>>> e9886a2 (up)
       line_items: lineItems,
 
       billing_address_collection: "required",
@@ -194,6 +335,7 @@ export async function POST(request: NextRequest) {
         enabled: true,
       },
 
+<<<<<<< HEAD
       client_reference_id: crypto.randomUUID(),
 
       success_url:
@@ -204,10 +346,23 @@ export async function POST(request: NextRequest) {
       metadata: {
         source: "zodiacdatn",
         fulfillment_status: "pending",
+=======
+      success_url:
+        `${origin}/checkout/success` +
+        "?session_id={CHECKOUT_SESSION_ID}",
+
+      cancel_url: `${origin}/checkout`,
+
+      client_reference_id: crypto.randomUUID(),
+
+      metadata: {
+        store: "zodiacdatn",
+>>>>>>> e9886a2 (up)
       },
     });
 
     if (!session.url) {
+<<<<<<< HEAD
       throw new Error("Stripe did not return a checkout URL.");
     }
 
@@ -226,6 +381,27 @@ export async function POST(request: NextRequest) {
             : "Unable to start secure checkout.",
       },
       { status: 400 }
+=======
+      throw new Error(
+        "Stripe did not return a checkout URL."
+      );
+    }
+
+    return NextResponse.json(
+      {
+        url: session.url,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Checkout error:", error);
+
+    return NextResponse.json(
+      {
+        error: "Unable to start secure checkout.",
+      },
+      { status: 500 }
+>>>>>>> e9886a2 (up)
     );
   }
 }

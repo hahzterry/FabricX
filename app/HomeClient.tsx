@@ -1221,7 +1221,7 @@ export default function HomeClient({
                   {" · "}
                   {products.length} loaded
                   {totalProducts !== null &&
-                    ` · ${totalProducts} reported by Printify`}
+                    ` · ${totalProducts} zodiac merch`}
                 </p>
 
                 {loading && (
